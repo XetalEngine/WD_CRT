@@ -45,6 +45,14 @@ namespace
     // Verified Release offsets from spot/SDK/Offsets.cpp; use the same six fields.
     constexpr std::uintptr_t recoil_fields[]{0xB78, 0xCB8, 0xCC0, 0xCC4, 0xCD0, 0xCD4};
 
+    float marker_range(const Config& settings, bool bag)
+    {
+        float range = bag ? (settings.extra.death_bags ? settings.extra.bag_range : 0.f) : (settings.extra.explosives ? settings.extra.explosive_range : 0.f);
+        if (bag ? settings.radar.bags : settings.radar.explosives)
+            range = std::max(range, radar_scan_range(settings));
+        return range;
+    }
+
     bool same_name(FNameValue a, FNameValue b)
     {
         return a.ComparisonIndex == b.ComparisonIndex && a.Number == b.Number;
@@ -156,7 +164,9 @@ void extras::reset()
 
 void extras::begin(std::uintptr_t world, const Config& settings)
 {
-    const bool markers = settings.extra.explosives || settings.extra.death_bags;
+    const bool explosives = marker_range(settings, false) > 0;
+    const bool bags = marker_range(settings, true) > 0;
+    const bool markers = explosives || bags;
     const bool vehicles = settings.aimbot.enabled && (settings.aimbot.silent_aim || settings.aimbot.magic_bullet);
     discover = markers && frame_ticks >= next_discovery;
     if (discover)
@@ -168,17 +178,17 @@ void extras::begin(std::uintptr_t world, const Config& settings)
         candidate_count = 0;
     if (!markers && !vehicles)
         return;
-    if (frame_ticks >= next_resolve && ((settings.extra.explosives && (!explosive_class || !placed_class)) || (settings.extra.death_bags && (!container_class || !bag_class)) || (vehicles && (!vehicle_classes[0] || !vehicle_classes[1] || !vehicle_classes[2] || !vehicle_classes[3] || !vehicle_classes[4]))))
+    if (frame_ticks >= next_resolve && ((explosives && (!explosive_class || !placed_class)) || (bags && (!container_class || !bag_class)) || (vehicles && (!vehicle_classes[0] || !vehicle_classes[1] || !vehicle_classes[2] || !vehicle_classes[3] || !vehicle_classes[4]))))
     {
         next_resolve = frame_ticks + 5000;
         const auto resolve = [](void*& dst, const wchar_t* name)
         { if (!dst) dst = engine::static_find_object(nullptr, nullptr, name); };
-        if (settings.extra.explosives)
+        if (explosives)
         {
             resolve(explosive_class, L"/Script/WDGame.WDExplosive");
             resolve(placed_class, L"/Script/WDGame.WDPlaceable");
         }
-        if (settings.extra.death_bags)
+        if (bags)
         {
             resolve(container_class, L"/Script/WDGame.WDContainer");
             resolve(bag_class, L"/Script/WDGame.WDPlayerInventoryContainer");
@@ -192,7 +202,7 @@ void extras::begin(std::uintptr_t world, const Config& settings)
         classes.clear();
     }
     server_now = 0;
-    if (!settings.extra.explosives)
+    if (!explosives)
         return;
     const auto state = read<std::uintptr_t>(world + offsets::World::GameState);
     if (!engine::is_live_object(reinterpret_cast<void*>(state)))
@@ -215,7 +225,8 @@ void extras::collect(std::uintptr_t actor, const CameraIPC& camera, const Config
     if (!discover || candidate_count >= 128)
         return;
     const int kind = classify(actor).marker;
-    if (!kind || (kind <= 2 ? !settings.extra.explosives : !settings.extra.death_bags))
+    const float range = marker_range(settings, kind >= 3);
+    if (!kind || range <= 0)
         return;
     int& count = kind <= 2 ? explosive_count : bag_count;
     if (count >= 64)
@@ -224,7 +235,7 @@ void extras::collect(std::uintptr_t actor, const CameraIPC& camera, const Config
     if (!engine::is_live_object(reinterpret_cast<void*>(root)))
         return;
     const auto transform = read<FTransform>(root + offsets::USceneComponent::ComponentToWorld);
-    if (!visual_math::finite(transform.Translation) || transform.Translation.Distance(camera.location) > 100 * (kind <= 2 ? settings.extra.explosive_range : settings.extra.bag_range))
+    if (!visual_math::finite(transform.Translation) || transform.Translation.Distance(camera.location) > 100 * range)
         return;
     ++count;
     candidates[candidate_count++] = {actor, read<FNameValue>(actor + offsets::UObject::NamePrivate), kind};
@@ -232,7 +243,8 @@ void extras::collect(std::uintptr_t actor, const CameraIPC& camera, const Config
 
 static void collect_marker(std::uintptr_t actor, int kind, const CameraIPC& camera, const Config& settings, game::Snapshot& output)
 {
-    if (kind <= 2 ? !settings.extra.explosives : !settings.extra.death_bags)
+    const float range = marker_range(settings, kind >= 3);
+    if (range <= 0)
         return;
     const auto root = read<std::uintptr_t>(actor + offsets::AActor::RootComponent);
     if (!engine::is_live_object(reinterpret_cast<void*>(root)))
@@ -245,8 +257,9 @@ static void collect_marker(std::uintptr_t actor, int kind, const CameraIPC& came
     marker.world = transform.Translation;
     marker.distance = static_cast<float>(marker.world.Distance(camera.location) * 0.01);
     marker.bag = kind >= 3;
-    if (!std::isfinite(marker.distance) || marker.distance > (marker.bag ? settings.extra.bag_range : settings.extra.explosive_range))
+    if (!std::isfinite(marker.distance) || marker.distance > range)
         return;
+    const bool label_needed = marker.bag ? settings.extra.death_bags && marker.distance <= settings.extra.bag_range : settings.extra.explosives && marker.distance <= settings.extra.explosive_range;
     if (kind == 1)
     {
         const float thrown = read<float>(actor + 0x318), explode = read<float>(actor + 0x340);
@@ -261,13 +274,14 @@ static void collect_marker(std::uintptr_t actor, int kind, const CameraIPC& came
             marker.timed = marker.fuse_total > 0.05f && marker.fuse_total < 120 && marker.fuse_left < 120;
         }
     }
-    if (marker.bag)
+    if (marker.bag && label_needed)
     {
         const auto nearby = read<TArray<std::uintptr_t>>(actor + 0x2F0);
         if (nearby.IsSane(32))
             marker.nearby = nearby.Count;
     }
-    strcpy_s(marker.label, marker_label(actor, kind));
+    if (label_needed)
+        strcpy_s(marker.label, marker_label(actor, kind));
     output.markers.push_back(marker);
 }
 
@@ -276,7 +290,7 @@ void extras::finish(const CameraIPC& camera, const Config& settings, game::Snaps
     for (int i = 0; i < candidate_count; ++i)
     {
         const auto& candidate = candidates[i];
-        if (candidate.kind <= 2 ? !settings.extra.explosives : !settings.extra.death_bags)
+        if (marker_range(settings, candidate.kind >= 3) <= 0)
             continue;
         if (engine::is_live_object(reinterpret_cast<void*>(candidate.actor)) && same_name(candidate.name, read<FNameValue>(candidate.actor + offsets::UObject::NamePrivate)))
             collect_marker(candidate.actor, candidate.kind, camera, settings, output);

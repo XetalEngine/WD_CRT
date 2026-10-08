@@ -31,7 +31,7 @@ namespace
             memcpy(bytes + at, &value, sizeof(value));
         }
     };
-    Object session, state_type, manager_type, tool_type, decal_type;
+    Object session, state_type, manager_type, tool_type, decal_type, explosive_type, container_type;
     Object component_fn, eyes_fn, location_fn, trace_fn, reserve_fn, commit_fn, string_fn, library, get_rot_fn, set_rot_fn;
     std::uintptr_t pawn_address, item_address, manager_address, tool_address;
     int moved, traces, reserved, committed, rotated, event_calls;
@@ -70,6 +70,10 @@ namespace
             out = &get_rot_fn;
         else if (s.find(L"SetControlRotation") != s.npos)
             out = &set_rot_fn;
+        else if (s.find(L"WDExplosive") != s.npos)
+            out = &explosive_type;
+        else if (s.find(L"WDContainer") != s.npos)
+            out = &container_type;
         return out ? out->bytes : nullptr;
     }
 
@@ -167,9 +171,39 @@ int test_features()
     settings.extra.tracer_style = 3;
     settings.extra.tracer_color[1] = 0.37f;
     settings.extra.build_x = true;
+    settings.radar.items = settings.radar.bags = true;
+    settings.radar.helicopters = false;
     const auto encoded = encode_config(settings);
     Config decoded;
     check(decode_config(encoded.c_str(), encoded.size(), decoded) && decoded.extra.build_x && decoded.extra.tracer_style == 3 && decoded.extra.tracer_color[1] == 0.37f, "shared settings round trip with new feature fields");
+    check(decoded.esp.minimap_size == 400 && decoded.radar.items && decoded.radar.bags && !decoded.radar.helicopters, "shared settings preserve radar filters and 400 pixel size");
+    Config old_settings;
+    old_settings.esp.minimap_size = 200;
+    old_settings.esp.vehicles = false;
+    old_settings.extra.build_x = true;
+    unsigned char old_bytes[4 + offsetof(Config, radar)]{3};
+    memcpy(old_bytes + 4, &old_settings, offsetof(Config, radar));
+    std::string legacy = "XENGINE3:";
+    std::uint32_t hash = 2166136261u;
+    for (unsigned char byte : old_bytes)
+    {
+        char hex[3];
+        snprintf(hex, sizeof(hex), "%02X", byte);
+        legacy += hex;
+        hash = (hash ^ byte) * 16777619u;
+    }
+    char checksum[9];
+    snprintf(checksum, sizeof(checksum), "%08X", hash);
+    legacy += checksum;
+    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.extra.build_x && decoded.esp.minimap_size == 400 && !decoded.radar.helicopters && !decoded.radar.ground && !decoded.radar.items, "version 3 shared settings migrate radar size and former vehicle visibility");
+    using wdgs::actors::Kind;
+    check(radar_vehicle_visible(settings, Kind::boat) && radar_vehicle_visible(settings, Kind::buggy) && !radar_vehicle_visible(settings, Kind::heli), "radar vehicle types can be selected independently");
+    check(radar_scan_range(settings) == 5000, "automatic radar collection covers its supported range");
+    settings.esp.minimap_auto_range = false;
+    settings.esp.minimap_range = 600;
+    check(radar_scan_range(settings) == 600, "manual radar collection respects selected range");
+    settings.esp.minimap = false;
+    check(radar_scan_range(settings) == 0, "disabled radar adds no collection range");
     auto corrupted = encoded;
     corrupted[24] = corrupted[24] == '0' ? '1' : '0';
     decoded.aimbot.fov = 234;
@@ -372,6 +406,34 @@ int test_features()
     camera_object.put(offsets::UObject::ObjectFlags, std::uint32_t{0x8000});
     check(!game::camera_for_render(published, rendered), "render rejects a camera pending destruction");
     camera_object.put(offsets::UObject::ObjectFlags, std::uint32_t{0});
+    Object grenade, bag, grenade_root, bag_root;
+    grenade.put(offsets::UObject::ClassPrivate, explosive_type.addr());
+    bag.put(offsets::UObject::ClassPrivate, container_type.addr());
+    grenade.put(offsets::AActor::RootComponent, grenade_root.addr());
+    bag.put(offsets::AActor::RootComponent, bag_root.addr());
+    FTransform transform{};
+    transform.Translation = {10000, 0, 0};
+    grenade_root.put(offsets::USceneComponent::ComponentToWorld, transform);
+    bag_root.put(offsets::USceneComponent::ComponentToWorld, transform);
+    settings = {};
+    settings.extra.explosives = settings.extra.death_bags = false;
+    settings.radar.explosives = settings.radar.bags = true;
+    settings.esp.minimap_auto_range = false;
+    extras::reset();
+    CameraIPC radar_camera{};
+    game::Snapshot radar_snapshot;
+    const int before_markers = event_calls;
+    extras::begin(world.addr(), settings);
+    extras::collect(grenade.addr(), radar_camera, settings, radar_snapshot);
+    extras::collect(bag.addr(), radar_camera, settings, radar_snapshot);
+    extras::finish(radar_camera, settings, radar_snapshot);
+    check(radar_snapshot.markers.size() == 2 && !radar_snapshot.markers[0].bag && radar_snapshot.markers[1].bag && !radar_snapshot.markers[0].label[0] && !radar_snapshot.markers[1].label[0] && event_calls == before_markers, "radar-only explosives and bags are collected without label calls or world ESP");
+    settings.esp.minimap = false;
+    radar_snapshot.markers.clear();
+    extras::begin(world.addr(), settings);
+    extras::finish(radar_camera, settings, radar_snapshot);
+    check(radar_snapshot.markers.empty(), "disabling both marker displays clears radar-only candidates");
+    extras::reset();
     world_pointer = 0;
     check(!game::camera_for_render(published, rendered), "render rejects the previous world before another entity scan finishes");
     offsets::base = old_base;

@@ -166,6 +166,21 @@ int main(int argc, char** argv)
     RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, v2, sizeof(v2));
     config.extra.no_recoil = true;
     check(load_config() && config.extra.explosives && !config.extra.no_recoil && !config.extra.auto_join, "version 2 migration supplies new defaults without overwriting old settings");
+    config.esp.minimap_size = 200;
+    config.esp.minimap_x = screen_width - 112.f;
+    config.esp.minimap_y = 112;
+    config.extra.build_x = true;
+    unsigned char v3[4 + offsetof(Config, radar)]{};
+    v3[0] = 3;
+    memcpy(v3 + 4, &config, offsetof(Config, radar));
+    RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, v3, sizeof(v3));
+    check(load_config() && config.esp.minimap_size == 400 && config.esp.minimap_x == -1 && config.esp.minimap_y == -1 && config.extra.build_x, "version 3 migration doubles the old default radar and preserves feature settings");
+    config.radar.items = true;
+    config.radar.helicopters = false;
+    check(save_config(), "save version 4 radar categories");
+    config.radar.items = false;
+    config.radar.helicopters = true;
+    check(load_config() && config.radar.items && !config.radar.helicopters, "radar filters survive save and load");
     DWORD broken = 999;
     RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, &broken, sizeof(broken));
     check(!load_config() && config.aimbot.fov == 135, "bad settings leave current state unchanged");
@@ -242,9 +257,9 @@ int main(int argc, char** argv)
     }
 
     failures += test_effect_drawing();
-    for (int tab = 0; tab < 7; ++tab)
+    for (int tab = 0; tab < 8; ++tab)
     {
-        menu::test_input(tab, 800, 570, false);
+        menu::test_input(tab, tab == 5 ? 665.f : 340.f, tab == 5 ? 190.f : 160.f, false);
         check(begin_frame(), "begin menu frame");
         menu::draw();
         check(overlay::end(), "present menu frame");
@@ -276,14 +291,14 @@ int main(int argc, char** argv)
         return overlay::end();
     };
     menu::test_input(0, 0, 0, false);
-    menu::test_mouse(232, 116, true);
+    menu::test_mouse(190, 116, true);
     for (int i = 0; i < 1000; ++i)
         menu::test_mouse(336, 116, true);
     menu::test_mouse(336, 116, false);
     check(draw_menu() && menu::test_tab() == 1, "tab press survives 1000 polls without drawing, release and cursor movement");
-    menu::test_mouse(336, 116, true);
+    menu::test_mouse(270, 116, true);
     check(draw_menu() && menu::test_tab() == 2, "next tab responds without a cooldown");
-    menu::test_mouse(336, 116, false);
+    menu::test_mouse(270, 116, false);
     const bool vehicles = config.esp.vehicles;
     menu::test_mouse(340, 160, true);
     for (int i = 0; i < 1000; ++i)
@@ -300,7 +315,8 @@ int main(int argc, char** argv)
     menu::test_mouse(340, 160, true);
     check(draw_menu() && config.esp.vehicles == vehicles, "outside click cannot activate a control after cursor movement");
     menu::test_mouse(340, 160, false);
-    menu::test_mouse(604, 310, true);
+    menu::test_input(3, 0, 0, false);
+    menu::test_mouse(288, 310, true);
     menu::test_mouse(800, 570, false);
     check(draw_menu() && config.esp.minimap_x == 450, "released slider press retains its original position across skipped frames");
     menu::test_mouse(1000, 310, false);
@@ -311,14 +327,14 @@ int main(int argc, char** argv)
         menu::test_input(tab, x, y, click, down);
         return draw_menu();
     };
-    check(menu_frame(2, 604, 310, true) && config.esp.minimap_x == 450, "radar X slider sets center coordinate");
-    check(menu_frame(2, 1000, 310, false, true) && config.esp.minimap_x == 800, "radar slider drag clamps to right edge");
-    check(menu_frame(2, 0, 310, false, true) && config.esp.minimap_x == 100, "radar slider drag clamps to left edge");
-    check(menu_frame(2, 604, 340, false) && config.esp.minimap_x == 100, "released radar slider stops changing");
-    check(menu_frame(2, 604, 340, true) && config.esp.minimap_y == 310, "radar Y slider moves independently");
-    check(menu_frame(2, 500, 400, true) && config.esp.minimap_x == -1 && config.esp.minimap_y == -1, "reset radar restores automatic top right position");
-    check(menu_frame(5, 288, 248, true) && config.esp.visible_color[0] == 0.5f, "color channel slider changes player color");
-    menu_frame(5, 800, 570, false);
+    check(menu_frame(3, 288, 310, true) && config.esp.minimap_x == 450, "radar X slider sets center coordinate");
+    check(menu_frame(3, 1000, 310, false, true) && config.esp.minimap_x == 700, "radar slider drag clamps to right edge");
+    check(menu_frame(3, 0, 310, false, true) && config.esp.minimap_x == 200, "radar slider drag clamps to left edge");
+    check(menu_frame(3, 288, 340, false) && config.esp.minimap_x == 200, "released radar slider stops changing");
+    check(menu_frame(3, 288, 340, true) && config.esp.minimap_y == 310, "radar Y slider moves independently");
+    check(menu_frame(3, 250, 460, true) && config.esp.minimap_x == -1 && config.esp.minimap_y == -1, "reset radar restores automatic top right position");
+    check(menu_frame(6, 288, 248, true) && config.esp.visible_color[0] == 0.5f, "color channel slider changes player color");
+    menu_frame(6, 800, 570, false);
     config = {};
 
     game::Snapshot scene;
@@ -358,6 +374,7 @@ int main(int argc, char** argv)
     game::ProjectedWorldActor vehicle{};
     strcpy_s(vehicle.actor.label, "Talon 9K-SAM");
     vehicle.actor.distance_meters = 250;
+    vehicle.actor.kind = wdgs::actors::Kind::stationary;
     vehicle.actor.world_position = {23000, 4000, 0};
     vehicle.screen = {610, 210, true};
     scene.vehicles.push_back(vehicle);
@@ -368,7 +385,7 @@ int main(int argc, char** argv)
     visuals::draw(scene);
     overlay::end();
     check(overlay::capture(L"build/scene.bmp"), "feature drawing with sample data");
-    check(pixel(L"build/scene.bmp", 700, 24, 0, 0, 0, 0) && pixel(L"build/scene.bmp", 788, 112, 255, 255, 255, 255), "round radar has transparent corners and a top right center");
+    check(pixel(L"build/scene.bmp", 500, 24, 0, 0, 0, 0) && pixel(L"build/scene.bmp", 688, 212, 255, 255, 255, 255), "round radar has transparent corners and a top right center");
     for (int mode = 0; mode < 5; ++mode)
     {
         config.extra.player_text = mode;
@@ -410,13 +427,86 @@ int main(int argc, char** argv)
     check(begin_frame(), "begin radar boundary frame");
     visuals::draw(scene);
     overlay::end();
-    check(overlay::capture(L"build/radar-boundary.bmp") && pixel(L"build/radar-boundary.bmp", 881, 112, 0, 255, 0, 255) && pixel(L"build/radar-boundary.bmp", 893, 112, 0, 0, 0, 0), "edge marker stays inside round radar");
-    config.esp.minimap_x = 140;
-    config.esp.minimap_y = 470;
+    check(overlay::capture(L"build/radar-boundary.bmp") && pixel(L"build/radar-boundary.bmp", 881, 212, 0, 255, 0, 255) && pixel(L"build/radar-boundary.bmp", 893, 212, 0, 0, 0, 0), "edge marker stays inside round radar");
+    config.esp.minimap_x = 212;
+    config.esp.minimap_y = 408;
     check(begin_frame(), "begin moved radar frame");
     visuals::draw(scene);
     overlay::end();
-    check(overlay::capture(L"build/radar-moved.bmp") && pixel(L"build/radar-moved.bmp", 140, 470, 255, 255, 255, 255) && pixel(L"build/radar-moved.bmp", 788, 112, 0, 0, 0, 0), "radar moves without leaving its previous image");
+    check(overlay::capture(L"build/radar-moved.bmp") && pixel(L"build/radar-moved.bmp", 212, 408, 255, 255, 255, 255) && pixel(L"build/radar-moved.bmp", 688, 212, 0, 0, 0, 0), "radar moves without leaving its previous image");
+
+    const Config before_filters = config;
+    config = {};
+    config.esp.enabled = config.esp.vehicles = config.esp.loot = false;
+    config.extra.explosives = config.extra.death_bags = false;
+    config.aimbot.draw_fov = config.anti_sam.flare_warning = false;
+    config.esp.minimap_auto_range = config.extra.radar_smoothing = false;
+    config.colors.radar_fill[3] = config.colors.radar_grid[3] = config.colors.radar_border[3] = 0;
+    game::Snapshot radar_scene;
+    radar_scene.valid = true;
+    const FVector marker_position{0, 15000, 0};
+    const auto capture_radar = [&]()
+    {
+        if (!begin_frame())
+            return false;
+        visuals::draw(radar_scene);
+        return overlay::end() && overlay::capture(L"build/radar-filters.bmp");
+    };
+    const auto filter_check = [&](bool& filter, const char* name)
+    {
+        filter = true;
+        const bool shown = capture_radar() && !pixel(L"build/radar-filters.bmp", 785, 212, 0, 0, 0, 0);
+        filter = false;
+        check(shown && capture_radar() && pixel(L"build/radar-filters.bmp", 785, 212, 0, 0, 0, 0), name);
+    };
+    game::ProjectedPlayer contact;
+    contact.player.health = 100;
+    contact.player.isVisible = true;
+    contact.player.distance = 150;
+    contact.player.world_pos = marker_position;
+    radar_scene.players.push_back(contact);
+    filter_check(config.radar.enemies, "radar enemy filter works with player ESP disabled");
+    radar_scene.players[0].player.is_in_team = true;
+    filter_check(config.extra.radar_team, "radar teammate filter works independently");
+    radar_scene.players[0].player.is_in_team = false;
+    radar_scene.players[0].player.health = 0;
+    config.radar.enemies = true;
+    filter_check(config.radar.downed, "radar downed filter includes or hides zero-health players");
+    radar_scene.players.clear();
+    game::ProjectedWorldActor radar_actor;
+    radar_actor.actor.world_position = marker_position;
+    radar_actor.actor.distance_meters = 150;
+    radar_scene.vehicles.push_back(radar_actor);
+    using wdgs::actors::Kind;
+    const Kind kinds[]{Kind::heli, Kind::buggy, Kind::boat, Kind::stationary};
+    bool* vehicle_filters[]{&config.radar.helicopters, &config.radar.ground, &config.radar.boats, &config.radar.stationary};
+    for (int i = 0; i < 4; ++i)
+    {
+        radar_scene.vehicles[0].actor.kind = kinds[i];
+        filter_check(*vehicle_filters[i], "radar vehicle category works with vehicle ESP disabled");
+    }
+    radar_scene.vehicles.clear();
+    radar_scene.dropped_items.push_back(radar_actor);
+    filter_check(config.radar.items, "radar item filter works with item ESP disabled");
+    radar_scene.dropped_items.clear();
+    game::Snapshot::Marker radar_marker;
+    radar_marker.world = marker_position;
+    radar_marker.distance = 150;
+    radar_scene.markers.push_back(radar_marker);
+    filter_check(config.radar.explosives, "radar explosive filter works with explosive ESP disabled");
+    radar_scene.markers[0].bag = true;
+    filter_check(config.radar.bags, "radar bag filter works with bag ESP disabled");
+    radar_scene.markers.clear();
+    radar_scene.players.push_back(contact);
+    radar_scene.players[0].player.world_pos.Y = 10000;
+    radar_scene.players[0].player.distance = 100;
+    radar_actor.actor.kind = Kind::heli;
+    radar_actor.actor.world_position.Y = 500000;
+    radar_actor.actor.distance_meters = 5000;
+    radar_scene.vehicles.push_back(radar_actor);
+    config.esp.minimap_auto_range = true;
+    check(capture_radar() && pixel(L"build/radar-filters.bmp", 842, 212, 0, 255, 0, 255), "hidden distant categories do not expand automatic radar range");
+    config = before_filters;
 
     Config scene_settings = config;
     config.esp.lines = config.esp.skeleton = config.esp.health = config.esp.agent_name = config.esp.distance = config.esp.minimap = config.esp.vehicles = config.esp.loot = false;
@@ -457,7 +547,7 @@ int main(int argc, char** argv)
     {
         frames_ok &= begin_frame();
         QueryPerformanceCounter(&blocked_start);
-        menu::test_input(i % 7, 800, 570, false);
+        menu::test_input(i % 8, 800, 570, false);
         menu::draw();
         frames_ok &= overlay::end();
         QueryPerformanceCounter(&blocked_end);

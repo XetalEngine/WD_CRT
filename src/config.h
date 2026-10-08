@@ -58,7 +58,7 @@ struct Config
         bool minimap = true;
         bool minimap_auto_range = true;
         float minimap_range = 300.f;
-        float minimap_size = 200.f;
+        float minimap_size = 400.f;
         float minimap_opacity = 0.70f;
         float minimap_x = -1.f;
         float minimap_y = -1.f;
@@ -138,7 +138,28 @@ struct Config
         float bag_color[4] = {1.f, 0.78f, 0.35f, 1.f};
         int player_text = 0; // both above, both below, distance, name, off
     } extra;
+
+    // Version 4: radar content is independent of world ESP.
+    struct
+    {
+        bool enemies = true;
+        bool downed = false;
+        bool helicopters = true;
+        bool ground = true;
+        bool boats = true;
+        bool stationary = true;
+        bool items = false;
+        bool explosives = false;
+        bool bags = false;
+    } radar;
 };
+
+namespace wdgs::actors
+{
+    enum class Kind : std::uint8_t;
+}
+bool radar_vehicle_visible(const Config& value, wdgs::actors::Kind kind);
+float radar_scan_range(const Config& value);
 
 inline Config config;
 bool save_config();

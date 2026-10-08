@@ -484,7 +484,7 @@ namespace game
             static SnapshotFeatureFlags from(const Config& settings) noexcept
             {
                 SnapshotFeatureFlags flags{};
-                flags.need_bones = settings.esp.box || settings.esp.skeleton || settings.esp.agent_name || settings.esp.distance ||
+                flags.need_bones = settings.esp.box || settings.esp.health || settings.esp.skeleton || settings.esp.agent_name || settings.esp.distance ||
                                    settings.aimbot.enabled || settings.mortar.mortar_aim;
                 flags.need_velocity = settings.prediction.enabled ||
                                       settings.aimbot.enabled || settings.mortar.mortar_aim;
@@ -820,6 +820,9 @@ namespace game
                                         settings.esp.distance || settings.aimbot.enabled ||
                                         (output.mortar.valid && settings.mortar.mortar_aim);
         int nearest_bone_budget = 8;
+        const float radar_range = radar_scan_range(settings);
+        const bool aim_vehicles = settings.aimbot.enabled && (settings.aimbot.silent_aim || settings.aimbot.magic_bullet);
+        const bool scan_vehicles = settings.esp.vehicles || aim_vehicles || (settings.esp.minimap && (settings.radar.helicopters || settings.radar.ground || settings.radar.boats || settings.radar.stationary));
         for (int i = 0; i < actors.Count; ++i)
         {
             if ((i & 15) == 0 && !current_match(match))
@@ -830,7 +833,7 @@ namespace game
 
             extras::collect(actor, cam, settings, output);
             const FNameValue actor_name = read<FNameValue>(actor + offsets::UObject::NamePrivate);
-            const wdgs::actors::Match effective_match = resolve_actor_match(actor, actor_name, settings.esp.vehicles || (settings.aimbot.enabled && (settings.aimbot.silent_aim || settings.aimbot.magic_bullet)));
+            const wdgs::actors::Match effective_match = resolve_actor_match(actor, actor_name, scan_vehicles);
 
             if (effective_match.kind == wdgs::actors::Kind::dropped_item || wdgs::actors::is_vehicle(effective_match.kind))
             {
@@ -839,9 +842,16 @@ namespace game
                 {
                     if (settings.esp.loot)
                         actor_distance_limit = settings.esp.loot_distance;
+                    if (settings.radar.items)
+                        actor_distance_limit = std::max(actor_distance_limit, radar_range);
                 }
-                else if (settings.esp.vehicles || (settings.aimbot.enabled && (settings.aimbot.silent_aim || settings.aimbot.magic_bullet)))
-                    actor_distance_limit = settings.esp.vehicle_distance;
+                else
+                {
+                    if (settings.esp.vehicles || aim_vehicles)
+                        actor_distance_limit = settings.esp.vehicle_distance;
+                    if (radar_vehicle_visible(settings, effective_match.kind))
+                        actor_distance_limit = std::max(actor_distance_limit, radar_range);
+                }
 
                 wdgs::world_actors::Snapshot world_actor{};
                 if (actor_distance_limit > 0.f && wdgs::world_actors::try_build(actor, cam.location, actor_name, effective_match, actor_distance_limit, world_actor))
@@ -913,7 +923,7 @@ namespace game
                 if (extra_bones)
                     --nearest_bone_budget;
                 const bool full_skeleton = drawn_skeleton || extra_bones;
-                wdgs::snapshot::PopulatePlayerBones(actor, player, full_skeleton, settings.esp.box || (settings.extra.player_text == 1 && (settings.esp.agent_name || settings.esp.distance)));
+                wdgs::snapshot::PopulatePlayerBones(actor, player, full_skeleton, settings.esp.box || settings.esp.health || (settings.extra.player_text == 1 && (settings.esp.agent_name || settings.esp.distance)));
             }
             if (needs_target_data)
             {
@@ -943,7 +953,7 @@ namespace game
 
             if (root_on_screen && player.has_bones)
             {
-                // Boxes need the head and mesh root even with skeleton/aim off.
+                // Boxes and health bars need head/root even with skeleton/aim off.
                 const bool project_full_skeleton = settings.esp.skeleton &&
                                                    player.distance <= settings.esp.skeleton_distance;
                 for (int bone_index = 0; bone_index < BONE_COUNT; ++bone_index)
@@ -977,7 +987,7 @@ namespace game
         {
             for (const auto& v : output.vehicles)
             {
-                if (!v.screen.valid)
+                if (!v.screen.valid || v.actor.distance_meters > settings.esp.vehicle_distance)
                     continue;
                 ProjectedPlayer vpp{};
                 vpp.player.world_pos = v.actor.world_position;

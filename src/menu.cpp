@@ -16,6 +16,7 @@ namespace
     bool old_insert, old_end, old_mouse, old_backspace, old_up, old_down;
     bool binding_keys[256]{};
     float* active_slider;
+    const char* tooltip;
     const char* status = "Insert: menu    Backspace: labels    Up/Down: FOV    End: stop";
 
     void set_player_text(int mode)
@@ -63,8 +64,15 @@ namespace
         old_mouse = held;
     }
 
-    bool button(float a, float b, float w, const char* label, bool selected = false)
+    void hint(float a, float b, float w, float h, const char* help)
     {
+        if (help && mouse_x >= a && mouse_x < a + w && mouse_y >= b && mouse_y < b + h)
+            tooltip = help;
+    }
+
+    bool button(float a, float b, float w, const char* label, bool selected = false, const char* help = nullptr)
+    {
+        hint(a, b, w, 24, help);
         rect(a, b, w, 24, selected ? color(config.colors.menu_accent) : control);
         text(a + w * 0.5f, b + 3, label, selected ? Color{0, 0, 0, 1} : color(config.colors.menu_value), 13, true);
         if (!clicked || !inside(a, b, w, 24))
@@ -73,15 +81,16 @@ namespace
         return true;
     }
 
-    void toggle(int column, int row, const char* label, bool& value)
+    void toggle(int column, int row, const char* label, bool& value, const char* help)
     {
         const float a = x + 18 + column * 316, b = y + 88 + row * 30;
         text(a, b + 3, label, color(config.colors.menu_text));
         if (button(a + 246, b, 46, value ? "ON" : "OFF", value))
             value = !value;
+        hint(a, b, 292, 24, help);
     }
 
-    void number(int column, int row, const char* label, float& value, float step, float low, float high, const char* fmt = "%.0f")
+    void number(int column, int row, const char* label, float& value, float step, float low, float high, const char* help, const char* fmt = "%.0f")
     {
         const float a = x + 18 + column * 316, b = y + 88 + row * 30;
         text(a, b + 3, label, color(config.colors.menu_text));
@@ -92,9 +101,10 @@ namespace
         char buffer[32];
         snprintf(buffer, sizeof(buffer), fmt, value);
         text(a + 229, b + 3, buffer, color(config.colors.menu_value), 13, true);
+        hint(a, b, 292, 24, help);
     }
 
-    void slider(int column, int row, const char* label, float& value, float low, float high, float fallback = 0, const char* fmt = "%.0f")
+    void slider(int column, int row, const char* label, float& value, float low, float high, const char* help, float fallback = 0, const char* fmt = "%.0f")
     {
         const float a = x + 18 + column * 316, b = y + 88 + row * 30;
         const float start = a + 128, length = 164;
@@ -115,21 +125,23 @@ namespace
         char buffer[32];
         snprintf(buffer, sizeof(buffer), fmt, shown);
         text(start + length * 0.5f, b - 1, buffer, color(config.colors.menu_value), 12, true);
+        hint(a, b, 292, 24, help);
     }
 
-    void integer(int column, int row, const char* label, int& value, int low, int high)
+    void integer(int column, int row, const char* label, int& value, int low, int high, const char* help)
     {
         float number_value = static_cast<float>(value);
-        number(column, row, label, number_value, 1, static_cast<float>(low), static_cast<float>(high));
+        number(column, row, label, number_value, 1, static_cast<float>(low), static_cast<float>(high), help);
         value = static_cast<int>(number_value);
     }
 
-    void choice(int column, int row, const char* label, int& value, const char* const* names, int count)
+    void choice(int column, int row, const char* label, int& value, const char* const* names, int count, const char* help)
     {
         const float a = x + 18 + column * 316, b = y + 88 + row * 30;
         text(a, b + 3, label, color(config.colors.menu_text));
         if (button(a + 164, b, 128, names[value]))
             value = (value + 1) % count;
+        hint(a, b, 292, 24, help);
     }
 } // namespace
 
@@ -207,6 +219,7 @@ void menu::update()
 
 void menu::draw()
 {
+    tooltip = nullptr;
     if (!menu_open)
         return;
     if (!held)
@@ -215,9 +228,10 @@ void menu::draw()
     rect(x, y, width, height, color(config.colors.menu_accent), false);
     text(x + 18, y + 9, "X-Engine", color(config.colors.menu_accent), 17);
     text(x + 450, y + 12, "Insert to close", muted, 12);
-    const char* tabs[]{"Aim", "Players", "World", "Mortar", "Effects", "Colors", "Settings"};
-    for (int i = 0; i < 7; ++i)
-        if (button(x + 18 + i * 90, y + 46, 86, tabs[i], i == tab))
+    const char* tabs[]{"Aim", "Players", "World", "Mini Radar", "Mortar", "Effects", "Colors", "Settings"};
+    const char* tab_help[]{"Aim targeting, prediction and projectile options.", "Player boxes, names, skeletons and display ranges.", "Vehicle, item, explosive and bag labels in the world.", "Radar size, position, range and visible categories.", "Mortar targeting, impact radar and helicopter flares.", "Bullet trails, automatic actions and feature HUD.", "Pick the colors and transparency of overlay elements.", "Save, load, share or reset settings; stop the overlay."};
+    for (int i = 0; i < 8; ++i)
+        if (button(x + 18 + i * 78, y + 46, 74, tabs[i], i == tab, tab_help[i]))
             tab = i;
     auto& e = config.esp;
     auto& a = config.aimbot;
@@ -228,113 +242,124 @@ void menu::draw()
     switch (tab)
     {
     case 0:
-        toggle(0, 0, "Enabled", a.enabled);
-        toggle(0, 1, "Draw FOV", a.draw_fov);
-        toggle(0, 2, "Visibility check", a.visible_check);
-        toggle(0, 3, "Team check", a.team_check);
-        choice(0, 4, "Target bone", a.bone, bones, 5);
-        choice(0, 5, "Target priority", a.mode, modes, 3);
-        number(0, 6, "FOV (Up/Down)", a.fov, 5, 1, 800);
-        integer(0, 7, "Aim speed", a.smooth, 1, 50);
+        toggle(0, 0, "Enabled", a.enabled, "Enables aiming while you hold the aim key.\nAiming pauses while the menu is open.");
+        toggle(0, 1, "Draw FOV", a.draw_fov, "Shows the aim selection circle around the crosshair.");
+        toggle(0, 2, "Visibility check", a.visible_check, "Requires a visible target for on-foot aiming.");
+        toggle(0, 3, "Team check", a.team_check, "Excludes teammates from aim target selection.");
+        choice(0, 4, "Target bone", a.bone, bones, 5, "Chooses the body part to aim at. Nearest selects\nthe valid bone closest to the crosshair.");
+        choice(0, 5, "Target priority", a.mode, modes, 3, "Prefers the closest target, nearest to the crosshair,\nor lowest health. Click to cycle.");
+        number(0, 6, "FOV (Up/Down)", a.fov, 5, 1, 800, "Sets the aim selection radius in screen pixels.\nUp / Down changes it by 5 pixels per press.");
+        integer(0, 7, "Aim speed", a.smooth, 1, 50, "Controls how quickly normal aim turns toward a target.\nHigher values turn faster.");
         text(x + 18, y + 331, "Aim key", color(config.colors.menu_text));
         {
             char key[24] = "Mouse 1";
             if (a.key != VK_LBUTTON)
                 snprintf(key, sizeof(key), "VK 0x%02X", a.key);
-            if (button(x + 182, y + 328, 128, binding ? "Press key..." : key))
+            if (button(x + 182, y + 328, 128, binding ? "Press key..." : key, false, "Click, then press a key or mouse button to bind aim.\nEscape cancels without changing the binding."))
             {
                 binding = true;
                 for (int i = 1; i < 255; ++i)
                     binding_keys[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
             }
         }
-        toggle(1, 0, "Silent aim", a.silent_aim);
-        toggle(1, 1, "Magic bullet", a.magic_bullet);
-        number(1, 2, "Release delay (s)", a.magic_bullet_delay_off, 0.1f, 0, 10, "%.1f");
-        toggle(1, 3, "No recoil", config.extra.no_recoil);
-        toggle(1, 4, "Prediction", config.prediction.enabled);
-        toggle(1, 5, "Bullet drop", config.prediction.bullet_drop);
-        toggle(1, 6, "Velocity lead", config.prediction.velocity_lead);
-        toggle(1, 7, "Prediction line", config.prediction.show_line);
+        toggle(1, 0, "Silent aim", a.silent_aim, "Redirects each new local projectile once toward\nthe selected target without moving the camera.");
+        toggle(1, 1, "Magic bullet", a.magic_bullet, "Keeps steering local projectiles toward the target.\nTakes priority when Silent aim is also enabled.");
+        number(1, 2, "Release delay (s)", a.magic_bullet_delay_off, 0.1f, 0, 10, "Waits before selecting another target after your\nMagic Bullet target reaches zero health.", "%.1f");
+        toggle(1, 3, "No recoil", config.extra.no_recoil, "Suppresses weapon recoil while enabled.\nRestores the original values when disabled.");
+        toggle(1, 4, "Prediction", config.prediction.enabled, "Estimates where to aim for projectile travel time.\nMagic Bullet uses the current target bone instead.");
+        toggle(1, 5, "Bullet drop", config.prediction.bullet_drop, "Compensates for projectile gravity when\nprediction is enabled.");
+        toggle(1, 6, "Velocity lead", config.prediction.velocity_lead, "Aims ahead of moving targets when\nprediction is enabled.");
+        toggle(1, 7, "Prediction line", config.prediction.show_line, "Draws a line from the target bone to the predicted\naim point when prediction is active.");
         break;
     case 1:
-        toggle(0, 0, "Player ESP", e.enabled);
-        toggle(0, 1, "Names", e.agent_name);
-        toggle(0, 2, "Skeleton", e.skeleton);
-        toggle(0, 3, "Boxes", e.box);
-        choice(0, 4, "Box style", e.box_style, boxes, 2);
-        toggle(0, 5, "Snaplines", e.lines);
-        toggle(0, 6, "Health", e.health);
-        toggle(0, 7, "Distance", e.distance);
-        toggle(1, 0, "Visibility colors", e.visible_check);
-        toggle(1, 1, "Show teammates", e.team);
-        number(1, 4, "Player range (m)", e.player_distance, 50, 1, 2000);
-        number(1, 5, "Skeleton range (m)", e.skeleton_distance, 25, 1, 500);
+        toggle(0, 0, "Player ESP", e.enabled, "Shows player overlays using the options below.\nMini Radar has its own visibility switches.");
+        toggle(0, 1, "Names", e.agent_name, "Includes player names in the selected text layout.");
+        toggle(0, 2, "Skeleton", e.skeleton, "Draws player bones within the skeleton range.");
+        toggle(0, 3, "Boxes", e.box, "Draws a box around each player within player range.");
+        choice(0, 4, "Box style", e.box_style, boxes, 2, "Switches between corner boxes and full rectangles.");
+        toggle(0, 5, "Snaplines", e.lines, "Draws lines from the bottom of the screen to players.");
+        toggle(0, 6, "Health", e.health, "Shows player health bars.");
+        toggle(0, 7, "Distance", e.distance, "Includes distance in meters in player labels.");
+        toggle(1, 0, "Visibility colors", e.visible_check, "Uses different player colors for visible and\nhidden players. Edit those colors in Colors.");
+        toggle(1, 1, "Show teammates", e.team, "Includes teammates in player overlays.\nRadar teammates are controlled in Mini Radar.");
+        number(1, 4, "Player range (m)", e.player_distance, 50, 1, 2000, "Maximum distance for player overlays in the world.\nDoes not limit the mini radar.");
+        number(1, 5, "Skeleton range (m)", e.skeleton_distance, 25, 1, 500, "Maximum distance for drawing player skeletons.");
         {
             int mode = config.extra.player_text;
-            choice(1, 7, "Player text", mode, labels, 5);
+            choice(1, 7, "Player text", mode, labels, 5, "Cycles combined labels above or below, distance only,\nname only, or no text. Backspace also cycles this.");
             if (mode != config.extra.player_text)
                 set_player_text(mode);
         }
         break;
     case 2:
-        toggle(0, 0, "Vehicles", e.vehicles);
-        number(0, 1, "Vehicle range (m)", e.vehicle_distance, 100, 1, 5000);
-        toggle(0, 3, "Dropped items", e.loot);
-        number(0, 4, "Item range (m)", e.loot_distance, 10, 1, 2000);
-        toggle(0, 5, "Explosives", config.extra.explosives);
-        number(0, 6, "Explosive range", config.extra.explosive_range, 25, 10, 1000);
-        toggle(0, 7, "Death bag info", config.extra.death_bags);
-        number(0, 8, "Bag range (m)", config.extra.bag_range, 25, 10, 1000);
-        toggle(1, 7, "Facing arrows", config.extra.radar_directions);
-        toggle(1, 9, "Radar teammates", config.extra.radar_team);
-        toggle(1, 10, "Smooth radar yaw", config.extra.radar_smoothing);
-        toggle(1, 0, "Radar", e.minimap);
-        toggle(1, 1, "Automatic range", e.minimap_auto_range);
-        number(1, 2, "Radar range (m)", e.minimap_range, 25, 25, 5000);
-        number(1, 3, "Size (pixels)", e.minimap_size, 20, 120, 500);
-        number(1, 4, "Opacity", e.minimap_opacity, 0.1f, 0.1f, 1, "%.1f");
-        {
-            const float half = std::min(e.minimap_size, static_cast<float>(std::min(screen_width, screen_height))) * 0.5f;
-            slider(1, 5, "Radar X", e.minimap_x, half, screen_width - half, screen_width - half - 12);
-            slider(1, 6, "Radar Y", e.minimap_y, half, screen_height - half, half + 12);
-        }
-        if (button(x + 334, y + 328, 292, "Reset radar position"))
-            e.minimap_x = e.minimap_y = -1;
+        toggle(0, 0, "Vehicles", e.vehicles, "Shows vehicle labels and distances in the world.");
+        number(0, 1, "Vehicle range (m)", e.vehicle_distance, 100, 1, 5000, "Maximum distance for world vehicle labels\nand vehicle aim candidates.");
+        toggle(0, 3, "Dropped items", e.loot, "Shows dropped-item labels and distances in the world.");
+        number(0, 4, "Item range (m)", e.loot_distance, 10, 1, 2000, "Maximum distance for dropped-item labels.");
+        toggle(0, 5, "Explosives", config.extra.explosives, "Shows explosive labels and remaining fuse time\nwhen a timed grenade provides it.");
+        number(0, 6, "Explosive range", config.extra.explosive_range, 25, 10, 1000, "Maximum distance for world explosive labels.");
+        toggle(0, 7, "Death bag info", config.extra.death_bags, "Shows bag/container labels and nearby looter counts.");
+        number(0, 8, "Bag range (m)", config.extra.bag_range, 25, 10, 1000, "Maximum distance for bag and container labels.");
         break;
     case 3:
-        toggle(0, 0, "Mortar aim", config.mortar.mortar_aim);
-        number(0, 1, "FOV (degrees)", config.mortar.fov, 5, 1, 180);
+        toggle(0, 0, "Radar", e.minimap, "Shows the circular mini radar with selected categories.");
+        toggle(0, 1, "Automatic range", e.minimap_auto_range, "Fits the radar range to the selected categories.\nHidden categories do not expand the range.");
+        number(0, 2, "Radar range (m)", e.minimap_range, 25, 25, 5000, "Sets the radar radius in meters when\nAutomatic range is OFF.");
+        number(0, 3, "Size (pixels)", e.minimap_size, 20, 120, 500, "Sets the radar diameter in pixels.\nIts position is kept inside the screen.");
+        number(0, 4, "Opacity", e.minimap_opacity, 0.1f, 0.1f, 1, "Changes the radar background opacity.\nMarkers keep their own colors and opacity.", "%.1f");
         {
-            const char* modes[]{"Auto aim", "Impact radar"};
-            choice(0, 3, "Main mode", config.extra.mortar_mode, modes, 2);
+            const float half = std::min(e.minimap_size, static_cast<float>(std::min(screen_width, screen_height))) * 0.5f;
+            slider(0, 5, "Radar X", e.minimap_x, half, screen_width - half, "Moves the radar center horizontally.\nDrag the slider to change its position.", screen_width - half - 12);
+            slider(0, 6, "Radar Y", e.minimap_y, half, screen_height - half, "Moves the radar center vertically.\nDrag the slider to change its position.", half + 12);
         }
-        text(x + 18, y + 298, "Impact radar: aim the mortar manually.", muted);
-        toggle(1, 0, "Automatic flares", config.anti_sam.auto_flare);
-        toggle(1, 1, "SAM warning", config.anti_sam.flare_warning);
-        text(x + 18, y + 268, "Page Up / Page Down: change mortar target", muted);
+        toggle(0, 7, "Facing arrows", config.extra.radar_directions, "Uses arrows to show player facing direction\nwhen that information is available.");
+        number(0, 8, "Arrow size", config.extra.radar_arrow_size, 1, 3, 10, "Sets the size of player direction arrows on the radar.");
+        toggle(0, 9, "Smooth radar yaw", config.extra.radar_smoothing, "Smooths radar rotation as the camera turns.\nTurn OFF for immediate rotation.");
+        if (button(x + 18, y + 388, 292, "Reset radar position", false, "Moves the radar back to the top right\nwith a 12-pixel margin."))
+            e.minimap_x = e.minimap_y = -1;
+        toggle(1, 0, "Enemies", config.radar.enemies, "Includes enemy player markers on the radar.");
+        toggle(1, 1, "Teammates", config.extra.radar_team, "Includes teammate markers on the radar.");
+        toggle(1, 2, "Include downed players", config.radar.downed, "Also includes zero-health players from the selected\nenemy and teammate groups on the radar.");
+        toggle(1, 3, "Helicopters", config.radar.helicopters, "Includes helicopter markers on the radar.");
+        toggle(1, 4, "Ground vehicles", config.radar.ground, "Includes tanks, APCs, buggies, trucks and motorcycles\non the radar.");
+        toggle(1, 5, "Boats", config.radar.boats, "Includes boat markers on the radar.");
+        toggle(1, 6, "Stationary weapons", config.radar.stationary, "Includes stationary weapon markers on the radar.");
+        toggle(1, 7, "Dropped items", config.radar.items, "Includes dropped-item markers on the radar.\nWorld labels can remain OFF.");
+        toggle(1, 8, "Explosives", config.radar.explosives, "Includes explosive markers on the radar.\nWorld labels can remain OFF.");
+        toggle(1, 9, "Bags / containers", config.radar.bags, "Includes bag and container markers on the radar.\nWorld labels can remain OFF.");
         break;
     case 4:
+        toggle(0, 0, "Mortar aim", config.mortar.mortar_aim, "Enables mortar auto-targeting in Auto aim mode.\nHold the aim key while the menu is closed.");
+        number(0, 1, "FOV (degrees)", config.mortar.fov, 5, 1, 180, "Sets the angular limit for mortar target selection.");
+        {
+            const char* modes[]{"Auto aim", "Impact radar"};
+            choice(0, 3, "Main mode", config.extra.mortar_mode, modes, 2, "Auto aim controls mortar targeting. Impact radar\nshows contacts and landing position for manual aim.");
+        }
+        text(x + 18, y + 298, "Impact radar: aim the mortar manually.", muted);
+        toggle(1, 0, "Automatic flares", config.anti_sam.auto_flare, "Releases helicopter flares when an incoming SAM\nis close enough and on an intercept course.");
+        toggle(1, 1, "SAM warning", config.anti_sam.flare_warning, "Shows an incoming SAM warning while in a helicopter.");
+        text(x + 18, y + 268, "Page Up / Page Down: change mortar target", muted);
+        break;
+    case 5:
     {
         const char* styles[]{"Rainbow trail", "Rainbow shots", "Solid", "Gradient"};
-        toggle(0, 0, "Bullet tracers", config.extra.tracers);
-        choice(0, 1, "Tracer color", config.extra.tracer_style, styles, 4);
-        number(0, 2, "Lifetime (s)", config.extra.tracer_lifetime, 0.25f, 0.25f, 5, "%.2f");
-        number(0, 3, "Line width", config.extra.tracer_width, 0.5f, 1, 4, "%.1f");
-        number(0, 5, "Radar arrow size", config.extra.radar_arrow_size, 1, 3, 10);
-        toggle(1, 0, "Auto join Manticore", config.extra.auto_join);
-        toggle(1, 1, "Anti AFK", config.extra.anti_afk);
-        toggle(1, 2, "Active features HUD", config.extra.feature_hud);
-        toggle(1, 3, "Silent Build X", config.extra.build_x);
+        toggle(0, 0, "Bullet tracers", config.extra.tracers, "Draws trails for your recent projectiles.");
+        choice(0, 1, "Tracer color", config.extra.tracer_style, styles, 4, "Cycles rainbow trails, rainbow per shot, solid color\nand a two-color gradient. Edit colors in Colors.");
+        number(0, 2, "Lifetime (s)", config.extra.tracer_lifetime, 0.25f, 0.25f, 5, "Sets how long a projectile trail stays visible.", "%.2f");
+        number(0, 3, "Line width", config.extra.tracer_width, 0.5f, 1, 4, "Sets the thickness of projectile trails in pixels.", "%.1f");
+        toggle(1, 0, "Auto join Manticore", config.extra.auto_join, "Automatically requests and confirms Manticore\nwhen the faction selection screen is available.");
+        toggle(1, 1, "Anti AFK", config.extra.anti_afk, "Makes a tiny aim movement every five seconds on foot,\nwhile the menu is closed and aim is inactive.");
+        toggle(1, 2, "Active features HUD", config.extra.feature_hud, "Shows a compact list of enabled features\nat the top left of the screen.");
+        toggle(1, 3, "Silent Build X", config.extra.build_x, "Moves nearby build markers to your aimed surface.\nRequires the hammer; restores them when disabled.");
         text(x + 18, y + 328, "Tracer colors: Colors > Effects", muted);
         break;
     }
-    case 5:
+    case 6:
     {
         static int group, selected;
         const char* groups[]{"Players", "World", "Effects", "Radar", "Menu"};
         const int previous = group;
-        choice(0, 0, "Category", group, groups, 5);
+        choice(0, 0, "Category", group, groups, 5, "Chooses which group of overlay colors to edit.\nClick to cycle through the groups.");
         if (previous != group)
             selected = 0;
         auto& c = config.colors;
@@ -351,19 +376,19 @@ void menu::draw()
         Entry* entries[]{players, world, effects, radar, menu};
         const int counts[]{11, 5, 9, 4, 4};
         text(x + 18, y + 121, "Color", color(c.menu_text));
-        if (button(x + 146, y + 118, 164, entries[group][selected].name))
+        if (button(x + 146, y + 118, 164, entries[group][selected].name, false, "Selects the element whose color you want to edit.\nClick to cycle; use the channel sliders below."))
             selected = (selected + 1) % counts[group];
         float* value = entries[group][selected].value;
-        slider(0, 3, "Red", value[0], 0, 1, 0, "%.2f");
-        slider(0, 4, "Green", value[1], 0, 1, 0, "%.2f");
-        slider(0, 5, "Blue", value[2], 0, 1, 0, "%.2f");
-        slider(0, 6, "Alpha", value[3], 0, 1, 0, "%.2f");
+        slider(0, 3, "Red", value[0], 0, 1, "Changes the red channel of the selected color.", 0, "%.2f");
+        slider(0, 4, "Green", value[1], 0, 1, "Changes the green channel of the selected color.", 0, "%.2f");
+        slider(0, 5, "Blue", value[2], 0, 1, "Changes the blue channel of the selected color.", 0, "%.2f");
+        slider(0, 6, "Alpha", value[3], 0, 1, "Changes opacity of the selected color.\n0 is transparent; 1 is fully opaque.", 0, "%.2f");
         rect(x + 352, y + 150, 236, 110, {0.15f, 0.15f, 0.15f, 1});
         rect(x + 352, y + 150, 118, 55, {0.3f, 0.3f, 0.3f, 1});
         rect(x + 470, y + 205, 118, 55, {0.3f, 0.3f, 0.3f, 1});
         rect(x + 352, y + 150, 236, 110, color(value));
         text(x + 352, y + 272, "Drag a channel to change its value.", muted, 12);
-        if (button(x + 352, y + 328, 236, "Reset all colors"))
+        if (button(x + 352, y + 328, 236, "Reset all colors", false, "Restores every overlay and menu color to its default.\nOther settings stay unchanged; Save keeps the reset."))
         {
             const Config defaults;
             c = defaults.colors;
@@ -378,27 +403,38 @@ void menu::draw()
         }
     }
     break;
-    case 6:
-        if (button(x + 18, y + 88, 292, "Save settings"))
+    case 7:
+        if (button(x + 18, y + 88, 292, "Save settings", false, "Saves the current settings for the next time\nyou load the DLL."))
             status = save_config() ? "Settings saved" : "Save failed";
-        if (button(x + 18, y + 128, 292, "Load settings"))
+        if (button(x + 18, y + 128, 292, "Load settings", false, "Replaces current settings with your last saved setup.\nUnsaved changes are discarded."))
             status = load_config() ? "Settings loaded" : "No compatible saved settings";
-        if (button(x + 18, y + 168, 292, "Restore defaults"))
+        if (button(x + 18, y + 168, 292, "Restore defaults", false, "Resets all settings and colors to their defaults.\nPress Save settings to keep them."))
         {
             config = {};
             status = "Defaults restored; save to keep them";
         }
-        if (button(x + 334, y + 88, 292, "Stop"))
+        if (button(x + 334, y + 88, 292, "Stop", false, "Stops updates and drawing, then releases resources.\nThe DLL stays loaded. End does the same thing."))
             stop = true;
-        if (button(x + 334, y + 128, 292, "Copy settings"))
+        if (button(x + 334, y + 128, 292, "Copy settings", false, "Copies your current setup as text to the clipboard\nso you can share it or keep a backup."))
             status = copy_config() ? "Settings copied to clipboard" : "Clipboard unavailable";
-        if (button(x + 334, y + 168, 292, "Paste settings"))
+        if (button(x + 334, y + 168, 292, "Paste settings", false, "Imports a valid settings string from the clipboard.\nPress Save settings to keep the imported setup."))
             status = paste_config() ? "Settings imported; save to keep them" : "Invalid settings or clipboard unavailable";
         text(x + 18, y + 244, "Settings are saved only when you press Save.", muted);
         text(x + 18, y + 274, "Stop releases drawing resources. The DLL stays loaded.", muted);
         break;
     }
     text(x + 18, y + height - 27, status, muted, 12);
+    if (tooltip && !held && !dragging && !binding)
+    {
+        constexpr float tip_width = 400, tip_height = 48;
+        const float tx = std::clamp(mouse_x + 14, 4.f, std::max(4.f, screen_width - tip_width - 4));
+        const float ty = std::clamp(mouse_y + 18 + tip_height <= screen_height - 4 ? mouse_y + 18 : mouse_y - tip_height - 10, 4.f, std::max(4.f, screen_height - tip_height - 4));
+        rect(tx, ty, tip_width, tip_height, control);
+        rect(tx, ty, tip_width, tip_height, color(config.colors.menu_accent), false);
+        text(tx + 10, ty + 7, tooltip, white, 12);
+    }
+    else
+        tooltip = nullptr;
     line(mouse_x - 5, mouse_y, mouse_x + 5, mouse_y, white);
     line(mouse_x, mouse_y - 5, mouse_x, mouse_y + 5, white);
     clicked = false;

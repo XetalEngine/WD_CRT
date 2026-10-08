@@ -216,7 +216,7 @@ namespace
             }
         for (const auto& marker : snapshot.markers)
         {
-            if (marker.bag ? !x.death_bags : !x.explosives)
+            if (marker.bag ? !x.death_bags || marker.distance > x.bag_range : !x.explosives || marker.distance > x.explosive_range)
                 continue;
             const auto point = projection.project(marker.world);
             if (!point.valid || point.x < 0 || point.y < 0 || point.x > screen_width || point.y > screen_height)
@@ -328,15 +328,30 @@ namespace
         const float half = std::min(e.minimap_size, static_cast<float>(std::min(screen_width, screen_height))) * 0.5f;
         const float x = std::clamp(e.minimap_x < 0 ? screen_width - half - 12 : e.minimap_x, half, screen_width - half);
         const float y = std::clamp(e.minimap_y < 0 ? half + 12 : e.minimap_y, half, screen_height - half);
+        const auto show_player = [&](const game::ProjectedPlayer& p)
+        {
+            return !p.is_vehicle && std::isfinite(p.player.health) && (p.player.health > 0 || config.radar.downed) && (p.player.is_in_team ? config.extra.radar_team : config.radar.enemies);
+        };
+        const auto show_marker = [&](const game::Snapshot::Marker& marker)
+        { return marker.bag ? config.radar.bags : config.radar.explosives; };
         float range = e.minimap_range;
         if (e.minimap_auto_range)
         {
             range = 50;
+            const auto include = [&](float distance)
+            { if (std::isfinite(distance) && distance <= 5000) range = std::max(range, distance * 1.2f); };
             for (const auto& p : snapshot.players)
-                if (!p.player.is_in_team || config.extra.radar_team)
-                    range = std::max(range, p.player.distance * 1.2f);
+                if (show_player(p))
+                    include(p.player.distance);
             for (const auto& v : snapshot.vehicles)
-                range = std::max(range, v.actor.distance_meters * 1.2f);
+                if (radar_vehicle_visible(config, v.actor.kind))
+                    include(v.actor.distance_meters);
+            if (config.radar.items)
+                for (const auto& item : snapshot.dropped_items)
+                    include(item.actor.distance_meters);
+            for (const auto& marker : snapshot.markers)
+                if (show_marker(marker))
+                    include(marker.distance);
             range = std::clamp(std::ceil(range / 25) * 25, 50.f, 5000.f);
         }
         Color background = color(config.colors.radar_fill);
@@ -370,7 +385,8 @@ namespace
             const float distance = std::hypot(dx, dy);
             if (!std::isfinite(distance) || distance > range * 100)
                 return;
-            const float scale = (half - 7) / (range * 100);
+            const float inset = config.extra.radar_directions ? std::max(7.f, config.extra.radar_arrow_size + 2) : 7.f;
+            const float scale = (half - inset) / (range * 100);
             const float px = x + (dy * cosine - dx * sine) * scale, py = y - (dx * cosine + dy * sine) * scale;
             if (player && player->yaw_valid && config.extra.radar_directions)
                 arrow(px, py, (player->yaw - smoothed_yaw) * 0.0174532925f, config.extra.radar_arrow_size, c);
@@ -378,11 +394,17 @@ namespace
                 circle(px, py, radius, c, true);
         };
         for (const auto& p : snapshot.players)
-            if (!p.is_vehicle && p.player.health > 0 && (!p.player.is_in_team || config.extra.radar_team))
+            if (show_player(p))
                 point(p.player.world_pos, player_color(p.player, e.visible_color, e.not_visible_color), 3, &p.player);
-        if (e.vehicles)
-            for (const auto& v : snapshot.vehicles)
+        for (const auto& v : snapshot.vehicles)
+            if (radar_vehicle_visible(config, v.actor.kind))
                 point(v.actor.world_position, vehicle_color(v), 4);
+        if (config.radar.items)
+            for (const auto& item : snapshot.dropped_items)
+                point(item.actor.world_position, color(e.loot_color), 2);
+        for (const auto& marker : snapshot.markers)
+            if (show_marker(marker))
+                point(marker.world, color(marker.bag ? config.extra.bag_color : config.extra.explosive_color), 3);
         circle(x, y, 3, local, true);
         const float heading = snapshot.local_yaw_valid ? (snapshot.local_yaw - smoothed_yaw) * 0.0174532925f : 0;
         line(x, y, x + std::sin(heading) * 12, y - std::cos(heading) * 12, local, 2);
@@ -409,12 +431,15 @@ void visuals::draw(const game::Snapshot& snapshot, const CameraIPC* camera)
             player(p, selected, fresh);
     if (config.esp.vehicles)
         for (const auto& v : snapshot.vehicles)
-            world_actor(v, vehicle_color(v), fresh);
+            if (v.actor.distance_meters <= config.esp.vehicle_distance)
+                world_actor(v, vehicle_color(v), fresh);
     if (config.esp.loot)
         for (const auto& item : snapshot.dropped_items)
         {
+            if (item.actor.distance_meters > config.esp.loot_distance)
+                continue;
             const bool enriched = config.extra.death_bags && std::any_of(snapshot.markers.begin(), snapshot.markers.end(), [&](const auto& marker)
-                                                                         { return marker.bag && marker.actor == item.actor.address; });
+                                                                         { return marker.bag && marker.distance <= config.extra.bag_range && marker.actor == item.actor.address; });
             if (!enriched)
                 world_actor(item, color(config.esp.loot_color), fresh);
         }

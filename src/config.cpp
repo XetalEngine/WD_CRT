@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include "overlay.h"
+#include "actor_registry.h"
 
 namespace
 {
@@ -12,7 +13,7 @@ namespace
 #endif
     struct Stored
     {
-        DWORD version = 3;
+        DWORD version = 4;
         Config data;
     };
     static_assert(offsetof(Config, colors) == 184, "Keep the version 1 settings prefix intact");
@@ -26,7 +27,50 @@ namespace
     {
         value = *reinterpret_cast<const unsigned char*>(&value) != 0;
     }
+
+    void migrate_radar(Config& value)
+    {
+        auto& e = value.esp;
+        normalize_bool(e.vehicles);
+        if (e.minimap_size == 200)
+        {
+            if (e.minimap_x == screen_width - 112.f)
+                e.minimap_x = -1;
+            if (e.minimap_y == 112.f)
+                e.minimap_y = -1;
+            e.minimap_size = 400;
+        }
+        value.radar.helicopters = value.radar.ground = value.radar.boats = value.radar.stationary = e.vehicles;
+    }
 } // namespace
+
+bool radar_vehicle_visible(const Config& value, wdgs::actors::Kind kind)
+{
+    using wdgs::actors::Kind;
+    switch (kind)
+    {
+    case Kind::heli:
+        return value.radar.helicopters;
+    case Kind::boat:
+        return value.radar.boats;
+    case Kind::stationary:
+        return value.radar.stationary;
+    case Kind::sph2:
+    case Kind::tank_la26:
+    case Kind::apc:
+    case Kind::buggy:
+    case Kind::truck:
+    case Kind::motorcycle:
+        return value.radar.ground;
+    default:
+        return false;
+    }
+}
+
+float radar_scan_range(const Config& value)
+{
+    return value.esp.minimap ? (value.esp.minimap_auto_range ? 5000.f : value.esp.minimap_range) : 0.f;
+}
 
 void validate_config(Config& value)
 {
@@ -39,7 +83,7 @@ void validate_config(Config& value)
     limit(e.loot_distance, 1, 2000, 80);
     limit(e.vehicle_distance, 1, 5000, 2000);
     limit(e.minimap_range, 25, 5000, 300);
-    limit(e.minimap_size, 120, 500, 200);
+    limit(e.minimap_size, 120, 500, 400);
     limit(e.minimap_opacity, 0.1f, 1, 0.7f);
     limit(e.minimap_x, -1, 32000, -1);
     limit(e.minimap_y, -1, 32000, -1);
@@ -60,6 +104,9 @@ void validate_config(Config& value)
     limit(value.mortar.fov, 1, 180, 30);
     limit(value.mortar.range_scale, 0.1f, 2, 0.77f);
     auto& x = value.extra;
+    auto& r = value.radar;
+    for (bool* b : {&r.enemies, &r.downed, &r.helicopters, &r.ground, &r.boats, &r.stationary, &r.items, &r.explosives, &r.bags})
+        normalize_bool(*b);
     for (bool* b : {&x.no_recoil, &x.explosives, &x.death_bags, &x.tracers, &x.radar_directions, &x.radar_team, &x.radar_smoothing, &x.auto_join, &x.anti_afk, &x.feature_hud, &x.build_x})
         normalize_bool(*b);
     x.tracer_style = std::clamp(x.tracer_style, 0, 3);
@@ -78,7 +125,7 @@ void validate_config(Config& value)
 bool save_config()
 {
     validate_config(config);
-    Stored stored{3, config};
+    Stored stored{4, config};
     HKEY opened;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, key, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &opened, nullptr) != ERROR_SUCCESS)
         return false;
@@ -107,8 +154,14 @@ bool load_config()
     {
         // New fields retain their defaults; explicit older bone choices survive.
     }
-    else if (stored.version != 3 || size != sizeof(stored))
+    else if (stored.version == 3 && size == offsetof(Stored, data) + offsetof(Config, radar))
+    {
+        // Retain the version 3 feature settings and supply radar filters.
+    }
+    else if (stored.version != 4 || size != sizeof(stored))
         return false;
+    if (stored.version < 4)
+        migrate_radar(stored.data);
     validate_config(stored.data);
     config = stored.data;
     return true;
@@ -116,11 +169,11 @@ bool load_config()
 
 std::string encode_config(const Config& value)
 {
-    Stored stored{3, value};
+    Stored stored{4, value};
     validate_config(stored.data);
     const auto bytes = reinterpret_cast<const unsigned char*>(&stored);
     constexpr char hex[] = "0123456789ABCDEF";
-    std::string result = "XENGINE3:";
+    std::string result = "XENGINE4:";
     result.reserve(9 + sizeof(stored) * 2 + 8);
     std::uint32_t hash = 2166136261u;
     for (std::size_t i = 0; i < sizeof(stored); ++i)
@@ -137,7 +190,11 @@ std::string encode_config(const Config& value)
 
 bool decode_config(const char* text, std::size_t length, Config& value)
 {
-    if (!text || length != 9 + sizeof(Stored) * 2 + 8 || memcmp(text, "XENGINE3:", 9))
+    if (!text || length < 17)
+        return false;
+    const bool legacy = memcmp(text, "XENGINE3:", 9) == 0;
+    const auto stored_size = legacy ? offsetof(Stored, data) + offsetof(Config, radar) : sizeof(Stored);
+    if ((!legacy && memcmp(text, "XENGINE4:", 9)) || length != 9 + stored_size * 2 + 8)
         return false;
     const auto digit = [](char c)
     { return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10
@@ -145,7 +202,7 @@ bool decode_config(const char* text, std::size_t length, Config& value)
     Stored stored{};
     auto bytes = reinterpret_cast<unsigned char*>(&stored);
     std::uint32_t hash = 2166136261u, expected = 0;
-    for (std::size_t i = 0; i < sizeof(stored); ++i)
+    for (std::size_t i = 0; i < stored_size; ++i)
     {
         const int high = digit(text[9 + i * 2]), low = digit(text[10 + i * 2]);
         if (high < 0 || low < 0)
@@ -160,8 +217,10 @@ bool decode_config(const char* text, std::size_t length, Config& value)
             return false;
         expected = (expected << 4) | d;
     }
-    if (hash != expected || stored.version != 3)
+    if (hash != expected || stored.version != (legacy ? 3 : 4))
         return false;
+    if (legacy)
+        migrate_radar(stored.data);
     validate_config(stored.data);
     value = stored.data;
     return true;

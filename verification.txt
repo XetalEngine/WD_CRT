@@ -1,51 +1,14 @@
-2026-10-08 camera latency and FOV controls
+Health-bar head-to-feet alignment
 
-Up / Down changes the aim FOV by +/-5 pixels per physical press (1-800).
-No repeat timer, focus query or new Windows import. Opposite keys cancel;
-aim-key binding reserves both keys. The game camera FOV is unchanged.
+Cause: rendering already shared the box's head/root bounds, but the updater requested the mesh root only for boxes or below-feet labels. With boxes off, health bars could fall back to a distance estimate ending at the actor origin near the belly.
 
-The previous renderer reused screen coordinates computed during the entity
-scan. A camera turn could therefore leave ESP aligned with an older view.
-The update scan also called native ProjectWorldLocationToScreen for every
-actor and bone, while the camera could change between those calls.
+Fix: health bars now enable bone collection and request the mesh root independently of boxes, skeletons, labels and aiming. Existing shared bounds draw the full background from head to feet and fill upward from the feet according to health. No new rendering path, full-skeleton requirement, thread or API import. Existing invalid/missing-bone fallback remains.
 
-Now targeting uses one camera matrix per scan. At draw time, cached world
-positions/bones are projected with a fresh camera cache sample after GPU
-readiness and snapshot exchange. Two matching guarded camera copies reject
-a partially updated POV; bad values use the published camera. Invalid
-world/controller/pawn/camera links suppress the stale scene. No native game
-call, bone lookup, entity scan or new allocation is introduced in drawing.
-This does not extrapolate entity movement or add ESP smoothing.
+Validation: reviewed the collection and projection path, then rebuilt the Desktop DLL and ran the existing regression suite. Live gameplay was not exercised.
 
-The raw camera layout and projection convention match the supplied spot
-GetCameraPOV/WorldToScreen code: CameraCachePrivate 0x1560 + POV 0x10.
-Scope zoom is already included in that FOV; it is not multiplied again.
-
-The old presentation interval 1 enabled VSync despite its comment. Replaced
-with D3DPRESENT_INTERVAL_IMMEDIATE and SetMaximumFrameLatency(1), preserving
-both shared surfaces, their completion queries, and nonblocking submission.
-Desktop composition and the separate game renderer can still add latency.
-
-Staging regression suite: 240 checks passed, 0 failures.
-Camera tests cover fresh yaw/zoom without entity publication, no ProcessEvent,
-invalid-cache fallback, unpossession, camera destruction and world exit.
-Captured left/center/right views of the same entity snapshot were inspected.
-
-1920x1080 synthetic crowd, 128 players, full skeletons/boxes/health/text:
-  Previous build, existing projection: median 4.335 ms static labels,
-    4.260 ms moving labels; wall 8.681 / 8.961 ms including test waits.
-  New build, camera sweeping over frozen entities: median 4.219 / 4.234 ms;
-    wall 7.555 / 7.536 ms including test waits.
-  Static text generated 0 new layouts per frame after a full sweep warmup.
-  Camera benchmark: 0 failures. See camera-before-bench.txt / camera-after-bench.txt.
-These scenes differ in camera motion/culling and presentation mode; the values
-show similar draw cost, not a measured game FPS improvement or input latency.
-
-No live-match camera alignment or end-to-end latency measurement was performed.
-
-Desktop release build: 230912 bytes; 119 imports (unchanged).
-Desktop regression suite: 240 checks passed, 0 failures.
-DLL SHA256: b6fc62850a447ab2228862cdcdbb916f1f9f06908ffa1e1336fbe40914dc5dba
+Desktop release: 242176 bytes (236.5 KiB); 119 imports (unchanged).
+Regression suite: 265 checks passed, 0 failures.
+DLL SHA256: 341cd0ce36018470e33456d5b8798eea41f3bdad165dd773929a7a19a9ca0088
 Existing Desktop compiler-option warnings remain; no compilation errors.
 
 PASS: no snapshot displayed before first publication
@@ -59,7 +22,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 2852
+Concurrent snapshot reads: 249
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -114,6 +77,12 @@ PASS: FOV hotkey respects lower limit
 PASS: opposite FOV hotkeys together do not change the setting
 PASS: requested feature defaults
 PASS: shared settings round trip with new feature fields
+PASS: shared settings preserve radar filters and 400 pixel size
+PASS: version 3 shared settings migrate radar size and former vehicle visibility
+PASS: radar vehicle types can be selected independently
+PASS: automatic radar collection covers its supported range
+PASS: manual radar collection respects selected range
+PASS: disabled radar adds no collection range
 PASS: corrupt shared settings rejected without replacing current settings
 PASS: truncated and missing settings rejected
 PASS: nearest bone includes limbs, excludes root, preserves fixed bone choices
@@ -145,6 +114,8 @@ PASS: fixed world geometry follows a rightward camera turn immediately
 PASS: invalid camera cache retains the complete published camera
 PASS: render rejects an old snapshot after unpossession
 PASS: render rejects a camera pending destruction
+PASS: radar-only explosives and bags are collected without label calls or world ESP
+PASS: disabling both marker displays clears radar-only candidates
 PASS: render rejects the previous world before another entity scan finishes
 PASS: observe memory validation faults
 PASS: test allocation
@@ -164,6 +135,9 @@ PASS: settings, palette and radar position round trip
 PASS: version 1 migration keeps custom settings and upgrades unchanged colors
 PASS: truncated version 2 settings are rejected
 PASS: version 2 migration supplies new defaults without overwriting old settings
+PASS: version 3 migration doubles the old default radar and preserves feature settings
+PASS: save version 4 radar categories
+PASS: radar filters survive save and load
 PASS: bad settings leave current state unchanged
 PASS: stationary trajectory
 PASS: velocity lead
@@ -176,7 +150,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.316 ms
+Busy-GPU stage 1 submission: 0.380 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -185,7 +159,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.145 ms
+Busy-GPU stage 2 submission: 0.235 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -194,7 +168,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.143 ms
+Busy-GPU stage 3 submission: 0.306 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -206,6 +180,9 @@ PASS: effect style 1 renders with markers and HUD
 PASS: effect style 2 renders with markers and HUD
 PASS: effect style 3 renders with markers and HUD
 PASS: effect style 4 renders with markers and HUD
+PASS: begin menu frame
+PASS: present menu frame
+PASS: capture menu tab
 PASS: begin menu frame
 PASS: present menu frame
 PASS: capture menu tab
@@ -272,6 +249,17 @@ PASS: begin radar boundary frame
 PASS: edge marker stays inside round radar
 PASS: begin moved radar frame
 PASS: radar moves without leaving its previous image
+PASS: radar enemy filter works with player ESP disabled
+PASS: radar teammate filter works independently
+PASS: radar downed filter includes or hides zero-health players
+PASS: radar vehicle category works with vehicle ESP disabled
+PASS: radar vehicle category works with vehicle ESP disabled
+PASS: radar vehicle category works with vehicle ESP disabled
+PASS: radar vehicle category works with vehicle ESP disabled
+PASS: radar item filter works with item ESP disabled
+PASS: radar explosive filter works with explosive ESP disabled
+PASS: radar bag filter works with bag ESP disabled
+PASS: hidden distant categories do not expand automatic radar range
 PASS: begin box geometry frame
 PASS: box uses head/root height and half-height width without skeleton drawing
 PASS: begin box geometry frame
@@ -283,7 +271,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.215 ms CPU average, 2.418 ms max; 10.359 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 1.776 ms CPU average, 44.443 ms max; 15.830 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -297,4 +285,4 @@ PASS: external presentation preserves pixels and alpha
 
 FullName                          Length
 --------                          ------
-C:\xampp\htdocs\downloads\dll.dll 230912
+C:\xampp\htdocs\downloads\dll.dll 242176
