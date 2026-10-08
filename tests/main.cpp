@@ -9,7 +9,9 @@
 int test_frame_exchange();
 int test_name_conversion();
 int test_transitions();
-int benchmark_crowd();
+int test_features();
+int test_effect_drawing();
+int benchmark_crowd(bool effects = false, bool camera_pan = false);
 
 namespace
 {
@@ -75,6 +77,10 @@ int main(int argc, char** argv)
 {
     if (argc == 2 && strcmp(argv[1], "--crowd-bench") == 0)
         return benchmark_crowd();
+    if (argc == 2 && strcmp(argv[1], "--effects-bench") == 0)
+        return benchmark_crowd(true);
+    if (argc == 2 && strcmp(argv[1], "--camera-bench") == 0)
+        return benchmark_crowd(false, true);
     if (argc == 3 && strcmp(argv[1], "--overlay-host") == 0)
     {
         wchar_t title[64];
@@ -96,6 +102,7 @@ int main(int argc, char** argv)
     failures += test_frame_exchange();
     failures += test_name_conversion();
     failures += test_transitions();
+    failures += test_features();
     test_base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(test_base);
     const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(test_base + dos->e_lfanew);
@@ -131,7 +138,7 @@ int main(int argc, char** argv)
     invalid.esp.minimap_size = -100;
     *reinterpret_cast<unsigned char*>(&invalid.esp.enabled) = 0x7F;
     validate_config(invalid);
-    check(invalid.aimbot.fov == 80 && invalid.aimbot.bone == 3 && invalid.esp.minimap_size == 120 && invalid.esp.enabled, "settings validation");
+    check(invalid.aimbot.fov == 80 && invalid.aimbot.bone == 4 && invalid.esp.minimap_size == 120 && invalid.esp.enabled, "settings validation");
     config.aimbot.fov = 135;
     config.esp.visible_color[1] = 0.25f;
     config.colors.radar_grid[2] = 0.35f;
@@ -153,6 +160,12 @@ int main(int argc, char** argv)
     legacy[0] = 2;
     RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, legacy, sizeof(legacy));
     check(!load_config() && config.aimbot.fov == 135, "truncated version 2 settings are rejected");
+    unsigned char v2[4 + offsetof(Config, extra)]{};
+    v2[0] = 2;
+    memcpy(v2 + 4, &config, offsetof(Config, extra));
+    RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, v2, sizeof(v2));
+    config.extra.no_recoil = true;
+    check(load_config() && config.extra.explosives && !config.extra.no_recoil && !config.extra.auto_join, "version 2 migration supplies new defaults without overwriting old settings");
     DWORD broken = 999;
     RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, &broken, sizeof(broken));
     check(!load_config() && config.aimbot.fov == 135, "bad settings leave current state unchanged");
@@ -228,7 +241,8 @@ int main(int argc, char** argv)
         check(pixel(L"build/busy.bmp", 15, 15, 0, 255, 0, 255), "queued frames preserve order and final pixels");
     }
 
-    for (int tab = 0; tab < 6; ++tab)
+    failures += test_effect_drawing();
+    for (int tab = 0; tab < 7; ++tab)
     {
         menu::test_input(tab, 800, 570, false);
         check(begin_frame(), "begin menu frame");
@@ -303,8 +317,8 @@ int main(int argc, char** argv)
     check(menu_frame(2, 604, 340, false) && config.esp.minimap_x == 100, "released radar slider stops changing");
     check(menu_frame(2, 604, 340, true) && config.esp.minimap_y == 310, "radar Y slider moves independently");
     check(menu_frame(2, 500, 400, true) && config.esp.minimap_x == -1 && config.esp.minimap_y == -1, "reset radar restores automatic top right position");
-    check(menu_frame(4, 288, 248, true) && config.esp.visible_color[0] == 0.5f, "color channel slider changes player color");
-    menu_frame(4, 800, 570, false);
+    check(menu_frame(5, 288, 248, true) && config.esp.visible_color[0] == 0.5f, "color channel slider changes player color");
+    menu_frame(5, 800, 570, false);
     config = {};
 
     game::Snapshot scene;
@@ -355,6 +369,41 @@ int main(int argc, char** argv)
     overlay::end();
     check(overlay::capture(L"build/scene.bmp"), "feature drawing with sample data");
     check(pixel(L"build/scene.bmp", 700, 24, 0, 0, 0, 0) && pixel(L"build/scene.bmp", 788, 112, 255, 255, 255, 255), "round radar has transparent corners and a top right center");
+    for (int mode = 0; mode < 5; ++mode)
+    {
+        config.extra.player_text = mode;
+        check(begin_frame(), "begin player label mode");
+        visuals::draw(scene);
+        overlay::end();
+        wchar_t path[64];
+        swprintf_s(path, L"build/player-text-%d.bmp", mode);
+        check(overlay::capture(path), "capture player label mode");
+    }
+    config.extra.player_text = 0;
+
+    const Config before_camera_test = config;
+    config.esp.vehicles = config.esp.loot = config.esp.minimap = false;
+    config.aimbot.draw_fov = config.anti_sam.flare_warning = false;
+    auto camera_scene = scene;
+    camera_scene.camera.fov = 90;
+    auto& fixed_player = camera_scene.players[0];
+    const auto unproject = [&](const game::ScreenPoint& point)
+    { return FVector{3000, (point.x - screen_width * 0.5) * 3000 / (screen_width * 0.5), (screen_height * 0.5 - point.y) * 3000 / (screen_width * 0.5)}; };
+    fixed_player.player.world_pos = unproject(fixed_player.screen);
+    for (int i = 0; i < BONE_COUNT; ++i)
+        fixed_player.player.bones[i] = unproject(fixed_player.bones[i]);
+    for (int turn = -1; turn <= 1; ++turn)
+    {
+        CameraIPC view = camera_scene.camera;
+        view.rotation.Yaw = turn * 12;
+        check(begin_frame(), "begin late camera projection frame");
+        visuals::draw(camera_scene, &view);
+        overlay::end();
+        wchar_t path[64];
+        swprintf_s(path, L"build/camera-pan-%d.bmp", turn + 1);
+        check(overlay::capture(path), "camera turn renders from the same frozen entity snapshot");
+    }
+    config = before_camera_test;
 
     config.esp.minimap_auto_range = false;
     scene.players[0].player.world_pos = {0, 30000, 0};
@@ -408,7 +457,7 @@ int main(int argc, char** argv)
     {
         frames_ok &= begin_frame();
         QueryPerformanceCounter(&blocked_start);
-        menu::test_input(i % 6, 800, 570, false);
+        menu::test_input(i % 7, 800, 570, false);
         menu::draw();
         frames_ok &= overlay::end();
         QueryPerformanceCounter(&blocked_end);

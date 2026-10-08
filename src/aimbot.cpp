@@ -15,7 +15,6 @@ namespace
     std::uintptr_t g_locked_actor = 0;
     std::uintptr_t g_magic_dead_actor = 0;
     double g_magic_dead_since{};
-    bool g_lmb_was_down = false;
     constexpr float kMagicShortRangeMeters = 50.f;
     // Helpers
     int bone_slot_for_config(int cfg_bone)
@@ -44,7 +43,7 @@ namespace
         return std::sqrtf(dx * dx + dy * dy);
     }
     // Aim methods
-    void aim_turret(void* controller, const FVector& aim_origin, const FVector& aim_point, float delta_time, float smooth, const aimbot::VehicleAimContext& veh, bool snap)
+    void aim_turret(void* controller, const FVector& aim_origin, const FVector& aim_point, float delta_time, float smooth, const aimbot::VehicleAimContext& veh)
     {
         FRotator mount_rot = read<FRotator>(veh.rot_comp + offsets::UWDWeaponRotationComponent::TargetRotation);
 
@@ -54,8 +53,7 @@ namespace
         current_rot.Roll = 0.0;
 
         FRotator target_rot = engine_funcs::find_look_at_rotation(aim_origin, aim_point);
-        FRotator final_rot = snap ? target_rot
-                                  : engine_funcs::rinterp_to(current_rot, target_rot, delta_time, smooth);
+        FRotator final_rot = engine_funcs::rinterp_to(current_rot, target_rot, delta_time, smooth);
 
         FRotator write_rot;
         write_rot.Pitch = final_rot.Pitch - veh.vehicle_pitch;
@@ -88,13 +86,36 @@ namespace
     }
 
 } // namespace
+int aimbot::target_bone(const game::ProjectedPlayer& player, int configured)
+{
+    if (configured != 4)
+    {
+        const int slot = bone_slot_for_config(configured);
+        return player.bones[slot].valid ? slot : -1;
+    }
+    int best = -1;
+    float distance = (std::numeric_limits<float>::max)();
+    for (int i = 0; i < BONE_ROOT; ++i)
+    {
+        const auto& point = player.bones[i];
+        if (!point.valid)
+            continue;
+        const float d = distance_to_crosshair(point.x, point.y);
+        if (std::isfinite(d) && d < distance)
+        {
+            distance = d;
+            best = i;
+        }
+    }
+    return best;
+}
+
 void aimbot::reset()
 {
     g_locked_actor = 0;
     g_magic_dead_actor = 0;
     g_magic_dead_since = {};
     g_last_tick = {};
-    g_lmb_was_down = false;
 }
 
 // Main tick
@@ -130,15 +151,14 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     // Target selection
     auto valid_target = [&](const game::ProjectedPlayer& pp, bool require_fov)
     {
-        // Vehicles share the projected-target list for rendering/telemetry,
-        // but neither regular aim nor silent projectile aim may lock them.
-        if (pp.is_vehicle || (settings.team_check && pp.player.is_in_team) || !pp.player.has_bones || !pp.bones[aim_bone].valid || !std::isfinite(pp.player.health) || pp.player.health <= 0.f || !std::isfinite(pp.player.distance) || pp.player.distance < 0.f)
+        const int slot = target_bone(pp, settings.bone);
+        if (slot < 0 || pp.actor_addr == reinterpret_cast<std::uintptr_t>(vehicle_aim.vehicle_actor) || (pp.is_vehicle && (!pp.team_known || (!settings.silent_aim && !settings.magic_bullet))) || (settings.team_check && pp.player.is_in_team) || !pp.player.has_bones || !pp.bones[slot].valid || !std::isfinite(pp.player.health) || pp.player.health <= 0.f || !std::isfinite(pp.player.distance) || pp.player.distance < 0.f)
             return false;
 
         if (!require_fov)
             return true;
 
-        const float dist_cross = distance_to_crosshair(pp.bones[aim_bone].x, pp.bones[aim_bone].y);
+        const float dist_cross = distance_to_crosshair(pp.bones[slot].x, pp.bones[slot].y);
         return std::isfinite(dist_cross) && dist_cross <= aim_fov;
     };
 
@@ -203,7 +223,10 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
             if (!valid_target(pp, true))
                 continue;
 
-            const float dist_cross = distance_to_crosshair(pp.bones[aim_bone].x, pp.bones[aim_bone].y);
+            const int slot = target_bone(pp, settings.bone);
+            const float dist_cross = distance_to_crosshair(pp.bones[slot].x, pp.bones[slot].y);
+            if (pp.is_vehicle && best && !best->is_vehicle)
+                continue;
             bool replace = false;
 
             switch (settings.mode)
@@ -221,6 +244,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
                 break;
             }
 
+            replace = replace || (best && best->is_vehicle && !pp.is_vehicle);
             if (replace)
             {
                 best = &pp;
@@ -249,6 +273,9 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
             wdgs::magic_bullet::probe(camera.location);
         return;
     }
+    aim_bone = target_bone(*best, settings.bone);
+    if (aim_bone < 0)
+        return;
     // Aim point & prediction
     const FVector& bone_pos = best->player.bones[aim_bone];
     if (bone_pos.X == 0.0 && bone_pos.Y == 0.0 && bone_pos.Z == 0.0)
@@ -287,6 +314,8 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
                 if (engine_funcs::project_world_to_screen(controller, aim_point, predicted_screen) && std::isfinite(predicted_screen.X) && std::isfinite(predicted_screen.Y))
                 {
                     prediction_line.bone = best->bones[aim_bone];
+                    prediction_line.bone_world = bone_pos;
+                    prediction_line.aim_world = aim_point;
                     prediction_line.aim.x = static_cast<float>(predicted_screen.X);
                     prediction_line.aim.y = static_cast<float>(predicted_screen.Y);
                     prediction_line.aim.valid = true;
@@ -297,7 +326,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         }
     }
 
-    if (settings.magic_bullet)
+    if (settings.magic_bullet || settings.silent_aim)
     {
         // At short range, muzzle-based prediction can overshoot because the
         // projectile is already in flight. Keep the normal predicted point at
@@ -306,34 +335,19 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
             (std::isfinite(best->player.distance) && best->player.distance < kMagicShortRangeMeters)
                 ? bone_pos
                 : aim_point;
-        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index);
+        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !settings.magic_bullet);
     }
 
-    // Magic Bullet is intentionally silent: projectile direction is corrected
-    // from the selected target while the camera/turret remains untouched.
-    // This is especially important for helicopter weapons, where rotating the
-    // view would defeat the purpose of projectile-only retargeting.
-    if (settings.magic_bullet)
-    {
-        g_lmb_was_down = false;
+    // Silent aim redirects a new local round once; Magic Bullet keeps steering it.
+    if (settings.magic_bullet || settings.silent_aim)
         return;
-    }
     // Dispatch to the correct aim method
     float smooth = static_cast<float>(settings.smooth);
 
     if (vehicle_aim.valid)
-    {
-        const bool lmb_down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-        const bool fire_edge = lmb_down && !g_lmb_was_down;
-        const bool vehicle_snap = settings.silent_aim && fire_edge;
-        aim_turret(controller, aim_origin, aim_point, delta_time, smooth, vehicle_aim, vehicle_snap);
-        g_lmb_was_down = lmb_down;
-    }
+        aim_turret(controller, aim_origin, aim_point, delta_time, smooth, vehicle_aim);
     else
-    {
-        g_lmb_was_down = false;
         aim_on_foot(controller, aim_origin, aim_point, delta_time, smooth);
-    }
 }
 
 std::uintptr_t aimbot::selected_actor()

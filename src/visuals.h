@@ -3,5 +3,5 @@
 
 namespace visuals
 {
-    void draw(const game::Snapshot& snapshot);
+    void draw(const game::Snapshot& snapshot, const CameraIPC* camera = nullptr);
 }

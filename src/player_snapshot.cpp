@@ -356,6 +356,10 @@ bool wdgs::snapshot::TryBuildPlayer(std::uintptr_t actor, const ActorSnapshotCon
 
     player = {};
     player.world_pos = transform.Translation;
+    const auto& q = transform.Rotation;
+    const double yaw = std::atan2(2 * (q.W * q.Z + q.X * q.Y), 1 - 2 * (q.Y * q.Y + q.Z * q.Z)) * 57.29577951308232;
+    player.yaw_valid = std::isfinite(yaw);
+    player.yaw = player.yaw_valid ? static_cast<float>(yaw) : 0;
     player.distance = static_cast<float>(context.observer_position.Distance(player.world_pos) / 100.0);
     if (!std::isfinite(player.distance) || player.distance < 0.f)
         return false;

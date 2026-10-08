@@ -203,10 +203,12 @@ bool overlay::initialize(HWND window)
     present.SwapEffect = D3DSWAPEFFECT_COPY;
     present.hDeviceWindow = window;
     present.Windowed = TRUE;
-    present.PresentationInterval = 0x00000001L /*D3DPRESENT_INTERVAL_IMMEDIATE*/;
+    present.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
     HRESULT hr = Direct3DCreate9Ex(D3D_SDK_VERSION, &api9);
     if (SUCCEEDED(hr))
         hr = api9->CreateDeviceEx(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window, D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_FPU_PRESERVE, &present, nullptr, &device9);
+    if (SUCCEEDED(hr))
+        hr = device9->SetMaximumFrameLatency(1);
     if (SUCCEEDED(hr))
         hr = device9->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backbuffer);
     LUID luid{};
@@ -277,7 +279,7 @@ bool overlay::flush()
             return false;
         if (FAILED(hr))
         {
-            //log(""overlay submission failed (0x%08lX)", static_cast<unsigned long>(hr));
+            // log(""overlay submission failed (0x%08lX)", static_cast<unsigned long>(hr));
             shutdown();
             return false;
         }
@@ -354,10 +356,10 @@ void overlay::circle(float x, float y, float radius, Color color, bool fill, flo
         context->DrawEllipse(shape, brush, thickness);
 }
 
-void overlay::text(float x, float y, const wchar_t* value, Color color, float size, bool centered, Color background)
+static TextEntry* cached_text(const wchar_t* value, float size)
 {
     if (!drawing || !value || !*value)
-        return;
+        return nullptr;
     unsigned hash = 2166136261u;
     unsigned count = 0;
     while (count < 127 && value[count])
@@ -381,7 +383,7 @@ void overlay::text(float x, float y, const wchar_t* value, Color color, float si
     {
         release(entry.layout);
         if (FAILED(text_factory->CreateTextLayout(value, count, format, 4096.f, 128.f, &entry.layout)))
-            return;
+            return nullptr;
 #ifdef WD_TEST
         ++text_layouts;
 #endif
@@ -395,12 +397,36 @@ void overlay::text(float x, float y, const wchar_t* value, Color color, float si
         wcsncpy_s(entry.value, value, count);
     }
     entry.used = used;
+    return &entry;
+}
+
+void overlay::text(float x, float y, const wchar_t* value, Color color, float size, bool centered, Color background)
+{
+    const auto* cached = cached_text(value, size);
+    if (!cached)
+        return;
+    const auto& entry = *cached;
     if (centered)
         x -= entry.width * 0.5f;
     if (background.a > 0)
         rect(x - 4, y - 2, entry.width + 8, entry.height + 4, background);
     brush->SetColor(color);
     context->DrawTextLayout({x, y}, entry.layout, brush);
+}
+
+void overlay::text_pair(float x, float y, const wchar_t* prefix, const wchar_t* value, Color color, float size, Color background)
+{
+    const auto* first = cached_text(prefix, size);
+    const auto* second = cached_text(value, size);
+    if (!first || !second)
+        return;
+    const float width = first->width + second->width;
+    x -= width * 0.5f;
+    if (background.a > 0)
+        rect(x - 4, y - 2, width + 8, std::max(first->height, second->height) + 4, background);
+    brush->SetColor(color);
+    context->DrawTextLayout({x, y}, first->layout, brush);
+    context->DrawTextLayout({x + first->width, y}, second->layout, brush);
 }
 
 void overlay::text(float x, float y, const char* value, Color color, float size, bool centered, Color background)

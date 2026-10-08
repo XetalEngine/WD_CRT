@@ -64,6 +64,9 @@
     <ClCompile Include="src\core.cpp" />
     <ClCompile Include="src\engine_funcs.cpp" />
     <ClCompile Include="src\game.cpp" />
+    <ClCompile Include="src\extras.cpp" />
+    <ClCompile Include="src\tracers.cpp" />
+    <ClCompile Include="src\game_actions.cpp" />
     <ClCompile Include="src\magic_bullet.cpp" />
     <ClCompile Include="src\menu.cpp" />
     <ClCompile Include="src\mortar_aim.cpp" />
@@ -82,6 +85,10 @@
     <ClInclude Include="src\config.h" />
     <ClInclude Include="src\engine_funcs.h" />
     <ClInclude Include="src\game.h" />
+    <ClInclude Include="src\extras.h" />
+    <ClInclude Include="src\tracers.h" />
+    <ClInclude Include="src\game_actions.h" />
+    <ClInclude Include="src\visual_math.h" />
     <ClInclude Include="src\frame_exchange.h" />
     <ClInclude Include="src\hook_process_event.h" />
     <ClInclude Include="src\magic_bullet.h" />

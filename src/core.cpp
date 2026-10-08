@@ -6,6 +6,7 @@
 #include "offsets.h"
 #include "overlay.h"
 #include "visuals.h"
+#include "game_actions.h"
 
 namespace
 {
@@ -30,21 +31,22 @@ namespace
             if (!frames.publish(next))
                 break;
         }
+        game_actions::stop();
         game::shutdown();
         return 0;
     }
 
     DWORD WINAPI run(void*)
     {
-       // log("startup");
+        // log("startup");
         HMODULE self;
         GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCSTR>(&run), &self);
         if (!overlay::initialize(FindWindowA("GLFW30", "Echo Overlay")))
         {
-            //log("overlay initialization failed");
+            // log("overlay initialization failed");
             return 1;
         }
-        //log("overlay ready: %dx%d", screen_width, screen_height);
+        // log("overlay ready: %dx%d", screen_width, screen_height);
         offsets::setup();
         load_config();
         game::Snapshot displayed;
@@ -52,20 +54,23 @@ namespace
         HANDLE updater = CreateThread(nullptr, 0, update, nullptr, 0, nullptr);
         if (!updater)
         {
-           // log("update thread creation failed");
+            // log("update thread creation failed");
             overlay::shutdown();
             return 2;
         }
-       // log("update and render threads running");
+        // log("update and render threads running");
         for (;;)
         {
             menu::update();
             if (menu::stop_requested())
                 break;
+            const bool drawing = overlay::begin();
             frames.refresh(displayed, config, menu_open);
-            if (overlay::begin())
+            if (drawing)
             {
-                visuals::draw(displayed);
+                CameraIPC camera{};
+                if (game::camera_for_render(displayed, camera))
+                    visuals::draw(displayed, &camera);
                 menu::draw();
                 if (!overlay::end())
                     break;
@@ -90,7 +95,7 @@ namespace
                 break;
         }
         overlay::shutdown();
-        //log("stopped");
+        // log("stopped");
         return 0;
     }
 } // namespace
@@ -99,17 +104,17 @@ BOOL WINAPI DllMain(HMODULE, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
-       // log("process attach");
+        // log("process attach");
 
         run(0);
 
-        //HANDLE thread = CreateThread(nullptr, 0, run, nullptr, 0, nullptr);
-        //if (!thread)
+        // HANDLE thread = CreateThread(nullptr, 0, run, nullptr, 0, nullptr);
+        // if (!thread)
         //{
-        //   // log("startup thread creation failed");
-        //    return FALSE;
-        //}
-        //CloseHandle(thread);
+        //    // log("startup thread creation failed");
+        //     return FALSE;
+        // }
+        // CloseHandle(thread);
     }
     return TRUE;
 }

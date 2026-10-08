@@ -4,6 +4,13 @@
 
 namespace
 {
+    struct Seen
+    {
+        std::uintptr_t pool = 0;
+        double time = 0, birth = 0;
+        bool redirected = false;
+    };
+    Seen seen[wdgs::projectile_subsystem::max_allocated]{};
     bool finite(const FVector& value)
     {
         return std::isfinite(value.X) && std::isfinite(value.Y) && std::isfinite(value.Z);
@@ -31,6 +38,8 @@ namespace
 void wdgs::magic_bullet::reset()
 {
     projectile_subsystem::reset();
+    for (auto& item : seen)
+        item = {};
 }
 
 bool wdgs::magic_bullet::probe(const FVector&)
@@ -39,7 +48,7 @@ bool wdgs::magic_bullet::probe(const FVector&)
     return projectile_subsystem::acquire(pool);
 }
 
-bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std::uint32_t pawn, std::uint32_t vehicle)
+bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std::uint32_t pawn, std::uint32_t vehicle, bool once)
 {
     if (!finite(target) || !pawn)
         return false;
@@ -50,8 +59,27 @@ bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std
     for (std::uint32_t slot = 0; slot < pool.allocated; ++slot)
     {
         projectile_subsystem::Instance instance{};
-        if (projectile_subsystem::read_instance(pool, slot, instance))
-            changed = retarget(instance, target, pawn, vehicle) || changed;
+        if (!projectile_subsystem::read_instance(pool, slot, instance))
+        {
+            seen[slot] = {};
+            continue;
+        }
+        auto& previous = seen[slot];
+        if (previous.pool != pool.pool || instance.flight_time < previous.time || std::fabs((frame_time - instance.flight_time) - previous.birth) > 0.1)
+            previous = {pool.pool, 0, frame_time - instance.flight_time, false};
+        previous.time = instance.flight_time;
+        if ((!once || !previous.redirected) && retarget(instance, target, pawn, vehicle))
+        {
+            previous.redirected = true;
+            changed = true;
+        }
     }
     return changed;
 }
+
+#ifdef WD_TEST
+bool wdgs::magic_bullet::test_retarget(const wdgs::projectile_subsystem::Instance& round, const FVector& target, std::uint32_t pawn, std::uint32_t vehicle)
+{
+    return retarget(round, target, pawn, vehicle);
+}
+#endif

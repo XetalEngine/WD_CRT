@@ -13,6 +13,10 @@
 #include "magic_bullet.h"
 #include "anti_sam.h"
 #include "hook_process_event.h"
+#include "extras.h"
+#include "tracers.h"
+#include "game_actions.h"
+#include "visual_math.h"
 
 #include <cmath>
 #include <algorithm>
@@ -81,6 +85,19 @@ namespace game
         bool finite(const FRotator& value)
         {
             return std::isfinite(value.Pitch) && std::isfinite(value.Yaw) && std::isfinite(value.Roll);
+        }
+
+        bool read_camera_cache(std::uintptr_t manager, CameraIPC& camera)
+        {
+            // Same contiguous POV used by spot's GetCameraPOV; no ProcessEvent.
+            constexpr auto size = offsetof(CameraIPC, fov) + sizeof(float);
+            static_assert(offsetof(CameraIPC, rotation) == 0x18 && offsetof(CameraIPC, fov) == 0x30);
+            const auto address = manager + offsets::APlayerCameraManager::CameraCachePrivate + offsets::FCameraCacheEntry::POV;
+            CameraIPC first{}, second{};
+            if (!read_mem(address, &first, size) || !read_mem(address, &second, size) || memcmp(&first, &second, size) || !finite(second.location) || !finite(second.rotation) || !std::isfinite(second.fov) || second.fov <= 1 || second.fov >= 179)
+                return false;
+            camera = second;
+            return true;
         }
 
         struct ActorObjectCacheEntry
@@ -467,7 +484,7 @@ namespace game
             static SnapshotFeatureFlags from(const Config& settings) noexcept
             {
                 SnapshotFeatureFlags flags{};
-                flags.need_bones = settings.esp.box || settings.esp.skeleton ||
+                flags.need_bones = settings.esp.box || settings.esp.skeleton || settings.esp.agent_name || settings.esp.distance ||
                                    settings.aimbot.enabled || settings.mortar.mortar_aim;
                 flags.need_velocity = settings.prediction.enabled ||
                                       settings.aimbot.enabled || settings.mortar.mortar_aim;
@@ -568,6 +585,8 @@ namespace game
     void init()
     {
         g_match = {};
+        extras::reset();
+        tracers::reset();
         wdgs::actors::reset();
         reset_actor_object_cache();
         wdgs::snapshot::reset_caches();
@@ -590,6 +609,7 @@ namespace game
 
     void tick(Snapshot& snapshot, const Config& settings, bool menu_visible)
     {
+        game_actions::update(settings, menu_visible);
         const SnapshotFeatureFlags features = SnapshotFeatureFlags::from(settings);
 
         // Keep vector capacity between frames; invalid worlds never retain drawable data.
@@ -597,6 +617,8 @@ namespace game
         snapshot.players.clear();
         snapshot.vehicles.clear();
         snapshot.dropped_items.clear();
+        snapshot.markers.clear();
+        snapshot.trails.clear();
 
         MatchContext match;
         if (!read_match(match))
@@ -604,7 +626,7 @@ namespace game
             if (g_match.world)
             {
                 shutdown();
-                //log("match unavailable; caches cleared");
+                // log("match unavailable; caches cleared");
             }
             return;
         }
@@ -612,7 +634,7 @@ namespace game
         {
             shutdown();
             g_match = match;
-            //log("match context ready");
+            // log("match context ready");
         }
         begin_actor_object_frame();
         auto world = reinterpret_cast<UWorld*>(match.world);
@@ -632,11 +654,12 @@ namespace game
 
         CameraIPC cam{};
         void* camera_manager = reinterpret_cast<void*>(camera_manager_ptr);
-        if (!engine_funcs::get_camera_location(camera_manager, cam.location) || !engine_funcs::get_camera_rotation(camera_manager, cam.rotation) || !engine_funcs::get_fov_angle(camera_manager, cam.fov))
+        if (!read_camera_cache(camera_manager_ptr, cam) && (!engine_funcs::get_camera_location(camera_manager, cam.location) || !engine_funcs::get_camera_rotation(camera_manager, cam.rotation) || !engine_funcs::get_fov_angle(camera_manager, cam.fov)))
             return;
 
         if (!finite(cam.location) || !finite(cam.rotation) || !std::isfinite(cam.fov) || cam.fov <= 1.f || cam.fov >= 179.f)
             return;
+        const visual_math::Projection projection(cam);
 
         // Keep the occupied vehicle as the scan anchor even when the class
         // probe is transiently stale during a hard yaw.  anti_sam::tick still
@@ -719,7 +742,14 @@ namespace game
             cam.location,
             local_faction};
 
+        extras::begin(match.world, settings);
         Snapshot& output = snapshot;
+        output.world = match.world;
+        output.controller = match.controller;
+        output.pawn = match.pawn;
+        output.camera_manager = match.camera;
+        output.time = frame_time;
+        output.markers.reserve(128);
         output.camera = cam;
         output.anti_sam = anti_sam_status;
         output.local_yaw = 0.f;
@@ -770,6 +800,7 @@ namespace game
                 output.weapon_stats.muzzle_position = muzzle;
         }
 
+        extras::recoil(output.weapon_stats, settings.extra.no_recoil);
         output.mortar = {};
         wdgs::mortar_aim::try_read(my_pawn, camera_manager_ptr, output.mortar);
 
@@ -788,6 +819,7 @@ namespace game
                                         settings.esp.lines || settings.esp.health || settings.esp.agent_name ||
                                         settings.esp.distance || settings.aimbot.enabled ||
                                         (output.mortar.valid && settings.mortar.mortar_aim);
+        int nearest_bone_budget = 8;
         for (int i = 0; i < actors.Count; ++i)
         {
             if ((i & 15) == 0 && !current_match(match))
@@ -796,8 +828,9 @@ namespace game
             if (!actors.TryGet(i, actor, kMaxActors) || actor == my_pawn || !live(actor))
                 continue;
 
+            extras::collect(actor, cam, settings, output);
             const FNameValue actor_name = read<FNameValue>(actor + offsets::UObject::NamePrivate);
-            const wdgs::actors::Match effective_match = resolve_actor_match(actor, actor_name, settings.esp.vehicles);
+            const wdgs::actors::Match effective_match = resolve_actor_match(actor, actor_name, settings.esp.vehicles || (settings.aimbot.enabled && (settings.aimbot.silent_aim || settings.aimbot.magic_bullet)));
 
             if (effective_match.kind == wdgs::actors::Kind::dropped_item || wdgs::actors::is_vehicle(effective_match.kind))
             {
@@ -807,7 +840,7 @@ namespace game
                     if (settings.esp.loot)
                         actor_distance_limit = settings.esp.loot_distance;
                 }
-                else if (settings.esp.vehicles)
+                else if (settings.esp.vehicles || (settings.aimbot.enabled && (settings.aimbot.silent_aim || settings.aimbot.magic_bullet)))
                     actor_distance_limit = settings.esp.vehicle_distance;
 
                 wdgs::world_actors::Snapshot world_actor{};
@@ -815,13 +848,7 @@ namespace game
                 {
                     ProjectedWorldActor projected_world{};
                     projected_world.actor = world_actor;
-                    FVector2D world_screen{};
-                    if (engine_funcs::project_world_to_screen(my_controller, world_actor.world_position, world_screen) && std::isfinite(world_screen.X) && std::isfinite(world_screen.Y) && world_screen.X > 0.0 && world_screen.Y > 0.0 && world_screen.X < static_cast<double>(screen_width) && world_screen.Y < static_cast<double>(screen_height))
-                    {
-                        projected_world.screen.x = static_cast<float>(world_screen.X);
-                        projected_world.screen.y = static_cast<float>(world_screen.Y);
-                        projected_world.screen.valid = true;
-                    }
+                    projected_world.screen = projection.project(world_actor.world_position);
                     // Keep the world-space record even when the root is outside
                     // the viewport so the radar still receives off-screen actors.
                     if (effective_match.kind == wdgs::actors::Kind::dropped_item && output.dropped_items.size() < wdgs::world_actors::max_dropped_items)
@@ -858,9 +885,9 @@ namespace game
             ProjectedPlayer projected{};
             const bool needs_offscreen_target_data =
                 output.mortar.valid && settings.mortar.mortar_aim;
-            FVector2D root_screen{};
-            const bool root_projected =
-                need_player_screen && engine_funcs::project_world_to_screen(my_controller, player.world_pos, root_screen);
+            const auto root_point = need_player_screen ? projection.project(player.world_pos) : ScreenPoint{};
+            const FVector2D root_screen{root_point.x, root_point.y};
+            const bool root_projected = root_point.valid;
             const bool root_on_screen = root_projected &&
                                         std::isfinite(root_screen.X) && std::isfinite(root_screen.Y) &&
                                         root_screen.X > 0.0 && root_screen.Y > 0.0 &&
@@ -879,36 +906,39 @@ namespace game
             const bool needs_target_data = root_on_screen || needs_offscreen_target_data;
             if (features.need_bones && needs_target_data)
             {
-                const bool full_skeleton = root_on_screen && settings.esp.skeleton &&
-                                           player.distance <= settings.esp.skeleton_distance;
-                wdgs::snapshot::PopulatePlayerBones(actor, player, full_skeleton, settings.esp.box);
+                const float aim_margin = settings.aimbot.fov + std::clamp(4200.f / std::max(player.distance, 1.f), 20.f, 250.f);
+                const bool nearest = settings.aimbot.enabled && settings.aimbot.bone == 4 && std::fabs(root_screen.X - screen_width * 0.5) < aim_margin && std::fabs(root_screen.Y - screen_height * 0.5) < aim_margin;
+                const bool drawn_skeleton = root_on_screen && settings.esp.skeleton && player.distance <= settings.esp.skeleton_distance;
+                const bool extra_bones = root_on_screen && nearest && !drawn_skeleton && nearest_bone_budget > 0;
+                if (extra_bones)
+                    --nearest_bone_budget;
+                const bool full_skeleton = drawn_skeleton || extra_bones;
+                wdgs::snapshot::PopulatePlayerBones(actor, player, full_skeleton, settings.esp.box || (settings.extra.player_text == 1 && (settings.esp.agent_name || settings.esp.distance)));
             }
             if (needs_target_data)
             {
-                if (settings.esp.visible_check)
+                if (settings.esp.visible_check || (settings.aimbot.enabled && settings.aimbot.visible_check))
                     player.isVisible = engine_funcs::line_of_sight_to(my_controller, reinterpret_cast<void*>(actor));
                 wdgs::snapshot::PopulatePlayerMortarState(actor, player_root_component, player);
             }
             const VelocitySample velocity = sample_player_velocity(actor, player.world_pos, velocity_timestamp, world_time_seconds, world_timing_valid, features.need_velocity && needs_target_data);
             projected.player = player;
-            if (velocity.engine_valid)
-
-                // Remote Actor::GetVelocity can describe the replicated movement intent rather
-                // than the displacement actually rendered by this client.  Once the validated
-                // world-time window is populated, predict from its latest displacement.  The
-                // window already suppresses frame noise; a second EMA trails direction changes.
-                if (world_timing_valid && velocity.measured_valid())
-                {
-                    projected.player.velocity = velocity.measured.raw;
-                }
-                else if (velocity.engine_valid)
-                {
-                    projected.player.velocity = velocity.engine;
-                }
-                else
-                {
-                    projected.player.velocity = {};
-                }
+            // Remote Actor::GetVelocity can describe the replicated movement intent rather
+            // than the displacement actually rendered by this client.  Once the validated
+            // world-time window is populated, predict from its latest displacement.  The
+            // window already suppresses frame noise; a second EMA trails direction changes.
+            if (world_timing_valid && velocity.measured_valid())
+            {
+                projected.player.velocity = velocity.measured.raw;
+            }
+            else if (velocity.engine_valid)
+            {
+                projected.player.velocity = velocity.engine;
+            }
+            else
+            {
+                projected.player.velocity = {};
+            }
             projected.actor_addr = actor;
 
             if (root_on_screen && player.has_bones)
@@ -918,36 +948,20 @@ namespace game
                                                    player.distance <= settings.esp.skeleton_distance;
                 for (int bone_index = 0; bone_index < BONE_COUNT; ++bone_index)
                 {
-                    if (!project_full_skeleton && !settings.aimbot.enabled && bone_index != BONE_CHEST && !(settings.esp.box && (bone_index == BONE_HEAD || bone_index == BONE_ROOT)))
+                    if (!project_full_skeleton && !settings.aimbot.enabled && bone_index != BONE_CHEST && bone_index != BONE_HEAD && bone_index != BONE_ROOT)
                         continue;
                     const auto& bone = player.bones[bone_index];
                     if (!finite(bone) || (bone.X == 0.0 && bone.Y == 0.0 && bone.Z == 0.0))
                         continue;
-                    FVector2D bone_screen;
-                    if (engine_funcs::project_world_to_screen(my_controller, bone, bone_screen))
-                    {
-                        const double x = bone_screen.X;
-                        const double y = bone_screen.Y;
-                        // ProjectWorldLocationToScreen can return finite but
-                        // unusable coordinates for a bone behind the camera.
-                        // Do not let one such point stretch the whole box when
-                        // the actor is viewed obliquely or from a vehicle.
-                        const bool on_viewport = std::isfinite(x) && std::isfinite(y) &&
-                                                 x >= 0.0 && y >= 0.0 &&
-                                                 x < static_cast<double>(viewport_width) &&
-                                                 y < static_cast<double>(viewport_height);
-                        if (on_viewport)
-                        {
-                            projected.bones[bone_index].x = static_cast<float>(x);
-                            projected.bones[bone_index].y = static_cast<float>(y);
-                            projected.bones[bone_index].valid = true;
-                        }
-                    }
+                    const auto point = projection.project(bone);
+                    if (point.valid && point.x >= 0 && point.y >= 0 && point.x < viewport_width && point.y < viewport_height)
+                        projected.bones[bone_index] = point;
                 }
             }
 
             output.players.push_back(projected);
         }
+        extras::finish(cam, settings, output);
         // Vehicle target conversion is only needed by the aimbot/mortar paths.
         // Keep world-actor rendering independent so disabled targeting features do
         // not allocate/copy a second representation of every vehicle each tick.
@@ -955,6 +969,8 @@ namespace game
         if (settings.aimbot.enabled)
         {
             vehicle_ctx = find_vehicle_aim_context(my_pawn, camera_manager_ptr, cam.rotation);
+            if (!vehicle_ctx.vehicle_actor)
+                vehicle_ctx.vehicle_actor = reinterpret_cast<void*>(observed_vehicle);
         }
 
         if (settings.aimbot.enabled || (output.mortar.valid && settings.mortar.mortar_aim))
@@ -976,37 +992,44 @@ namespace game
                     vpp.bones[b] = v.screen;
                 vpp.actor_addr = v.actor.address;
                 vpp.is_vehicle = true;
+                vpp.team_known = extras::vehicle_team(v.actor.address, local_faction, vpp.player.is_in_team);
+                vpp.player.isVisible = !settings.aimbot.visible_check || engine_funcs::line_of_sight_to(my_controller, reinterpret_cast<void*>(v.actor.address));
                 output.players.push_back(vpp);
             }
         }
 
         if (!current_match(match))
             return;
-        if (output.mortar.valid && settings.mortar.mortar_aim)
+        if (output.mortar.valid && (settings.mortar.mortar_aim || settings.extra.mortar_mode == 1))
         {
-            bool aim_key_down = !menu_visible && (GetAsyncKeyState(settings.aimbot.key) & 0x8000) != 0;
-            std::vector<wdgs::mortar_aim::TargetPlayer> mortar_targets;
-            mortar_targets.reserve(output.players.size());
-            for (const auto& pp : output.players)
+            if (settings.extra.mortar_mode == 0)
             {
-                if (!std::isfinite(pp.player.health) || pp.player.health <= 0.f)
-                    continue;
-                wdgs::mortar_aim::TargetPlayer tp{};
-                // Vehicle actors do not expose the infantry bone array.  Use the
-                // actor world origin for them; infantry keeps the pelvis point.
-                // This also lets the marker-driven indirect solver select a vehicle
-                // target instead of silently reporting zero candidates.
-                tp.position = pp.is_vehicle
-                                  ? pp.player.world_pos
-                                  : pp.player.bones[BONE_PELVIS];
-                tp.velocity = pp.player.velocity;
-                tp.actor_addr = pp.actor_addr;
-                tp.is_team = pp.player.is_in_team;
-                tp.health = pp.player.health;
-                wcsncpy_s(tp.name, pp.player.player_name, _TRUNCATE);
-                mortar_targets.push_back(tp);
+                bool aim_key_down = !menu_visible && (GetAsyncKeyState(settings.aimbot.key) & 0x8000) != 0;
+                std::vector<wdgs::mortar_aim::TargetPlayer> mortar_targets;
+                mortar_targets.reserve(output.players.size());
+                for (const auto& pp : output.players)
+                {
+                    if (!std::isfinite(pp.player.health) || pp.player.health <= 0.f)
+                        continue;
+                    wdgs::mortar_aim::TargetPlayer tp{};
+                    // Vehicle actors do not expose the infantry bone array.  Use the
+                    // actor world origin for them; infantry keeps the pelvis point.
+                    // This also lets the marker-driven indirect solver select a vehicle
+                    // target instead of silently reporting zero candidates.
+                    tp.position = pp.is_vehicle
+                                      ? pp.player.world_pos
+                                      : pp.player.bones[BONE_PELVIS];
+                    tp.velocity = pp.player.velocity;
+                    tp.actor_addr = pp.actor_addr;
+                    tp.is_team = pp.player.is_in_team;
+                    tp.health = pp.player.health;
+                    wcsncpy_s(tp.name, pp.player.player_name, _TRUNCATE);
+                    mortar_targets.push_back(tp);
+                }
+                wdgs::mortar_aim::auto_target(output.mortar, mortar_targets, aim_key_down, settings.aimbot.team_check, settings.aimbot.smooth, settings.mortar.fov, settings.mortar.range_scale, settings.mortar.arc_mode, menu_visible);
             }
-            wdgs::mortar_aim::auto_target(output.mortar, mortar_targets, aim_key_down, settings.aimbot.team_check, settings.aimbot.smooth, settings.mortar.fov, settings.mortar.range_scale, settings.mortar.arc_mode, menu_visible);
+            else
+                aimbot::reset();
         }
         else
         {
@@ -1018,7 +1041,18 @@ namespace game
             aimbot::tick(output.players, my_controller, cam, settings.aimbot, settings.prediction, local_bullet_speed, local_zeroing_meters, local_gravity_scale, output.prediction_line, output.weapon_stats.muzzle_position, output.weapon_stats.muzzle_valid, vehicle_ctx, local_pawn_internal_index, local_vehicle_internal_index, menu_visible);
             output.aim_selected_actor = aimbot::selected_actor();
         }
+        if (!current_match(match))
+            return;
+        tracers::tick(output, read<std::uint32_t>(my_pawn + offsets::UObject::InternalIndex), observed_vehicle ? read<std::uint32_t>(observed_vehicle + offsets::UObject::InternalIndex) : 0, settings.extra.tracers, settings.extra.tracer_lifetime);
         output.valid = current_match(match);
     }
 
+    bool camera_for_render(const Snapshot& snapshot, CameraIPC& camera)
+    {
+        if (!snapshot.valid || !snapshot.world || !snapshot.camera_manager || read<std::uintptr_t>(offsets::base + offsets::UWorldPtr) != snapshot.world || !live(snapshot.world) || !live(snapshot.controller) || !live(snapshot.pawn) || !live(snapshot.camera_manager) || read<std::uintptr_t>(snapshot.controller + offsets::APlayerController_Extra::ControllerPawn) != snapshot.pawn || read<std::uintptr_t>(snapshot.controller + offsets::APlayerController::PlayerCameraManager) != snapshot.camera_manager)
+            return false;
+        camera = snapshot.camera;
+        read_camera_cache(snapshot.camera_manager, camera);
+        return true;
+    }
 } // namespace game

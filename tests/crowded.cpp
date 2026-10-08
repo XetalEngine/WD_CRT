@@ -43,7 +43,7 @@ namespace
     }
 } // namespace
 
-int benchmark_crowd()
+int benchmark_crowd(bool effects, bool camera_pan)
 {
     WNDCLASSW wc{};
     wc.lpfnWndProc = DefWindowProcW;
@@ -58,6 +58,7 @@ int benchmark_crowd()
     config.esp.player_distance = config.esp.skeleton_distance = 2000;
     config.esp.minimap = config.esp.lines = config.esp.vehicles = config.esp.loot = false;
     config.aimbot.draw_fov = false;
+    config.extra.tracers = effects;
     config.anti_sam.flare_warning = false;
     menu_open = false;
     LARGE_INTEGER frequency, begin, end, wall_start, wall_end;
@@ -65,18 +66,56 @@ int benchmark_crowd()
     const double milliseconds = 1000.0 / frequency.QuadPart;
     int failures = 0;
     printf("1920x1080, Tahoma, corner boxes, full skeletons, health, names and distances. Synthetic scene; no game update.\n");
+    if (camera_pan)
+        printf("Fresh camera projection each draw; frozen entity publication during left/right camera sweeps.\n");
     for (int count : {16, 64, 128})
         for (int moving = 0; moving < 2; ++moving)
         {
             auto scene = crowd(count);
+            scene.camera.fov = 90;
+            if (camera_pan)
+                for (auto& p : scene.players)
+                {
+                    const auto world = [&](const game::ScreenPoint& point)
+                    { return FVector{10000, (point.x - screen_width * 0.5) * 10000 / (screen_width * 0.5), (screen_height * 0.5 - point.y) * 10000 / (screen_width * 0.5)}; };
+                    p.player.world_pos = world(p.screen);
+                    for (int i = 0; i < BONE_COUNT; ++i)
+                        p.player.bones[i] = world(p.bones[i]);
+                }
+            if (effects)
+            {
+                scene.camera.fov = 90;
+                for (int i = 0; i < 64; ++i)
+                {
+                    game::Snapshot::Marker marker;
+                    marker.world = {5000, -4000.0 + (i % 16) * 500, -2000.0 + (i / 16) * 1000};
+                    marker.distance = 50;
+                    marker.bag = i % 2 != 0;
+                    marker.timed = !marker.bag;
+                    marker.fuse_left = 2;
+                    marker.fuse_total = 5;
+                    marker.nearby = marker.bag ? 1 : 0;
+                    strcpy_s(marker.label, marker.bag ? "DEATH BAG" : "GRENADE");
+                    scene.markers.push_back(marker);
+                }
+                for (int i = 0; i < 24; ++i)
+                {
+                    game::Snapshot::Trail trail;
+                    trail.count = 12;
+                    trail.hue = i / 24.f;
+                    for (int j = 0; j < trail.count; ++j)
+                        trail.points[j] = {1500.0 + j * 100, -500.0 + i * 30, -400.0 + j * 60};
+                    scene.trails.push_back(trail);
+                }
+            }
             std::array<double, 60> samples{};
             unsigned created = 0;
             QueryPerformanceCounter(&wall_start);
-            for (int frame = -4; frame < static_cast<int>(samples.size()); ++frame)
+            for (int frame = camera_pan ? -60 : -4; frame < static_cast<int>(samples.size()); ++frame)
             {
                 if (moving)
                     for (int i = 0; i < count; ++i)
-                        scene.players[i].player.distance = 30.f + i + frame + 4;
+                        scene.players[i].player.distance = 30.f + i + std::max(frame, -4) + 4;
                 if (!begin_frame())
                 {
                     ++failures;
@@ -88,7 +127,9 @@ int benchmark_crowd()
                     QueryPerformanceCounter(&wall_start);
                 }
                 QueryPerformanceCounter(&begin);
-                visuals::draw(scene);
+                CameraIPC camera = scene.camera;
+                camera.rotation.Yaw = ((frame + 60) % 60 - 30) * 0.15;
+                visuals::draw(scene, camera_pan ? &camera : nullptr);
                 if (!overlay::end())
                     ++failures;
                 QueryPerformanceCounter(&end);

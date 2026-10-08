@@ -1,6 +1,7 @@
 #include "visuals.h"
 #include "config.h"
 #include "overlay.h"
+#include "visual_math.h"
 #include <cmath>
 
 namespace
@@ -61,16 +62,32 @@ namespace
             }
     }
 
-    void player(const game::ProjectedPlayer& p, std::uintptr_t selected)
+    void player(const game::ProjectedPlayer& p, std::uintptr_t selected, const visual_math::Projection* projection)
     {
         const auto& e = config.esp;
         const auto& data = p.player;
-        if (p.is_vehicle || !p.screen.valid || data.distance > e.player_distance || (data.is_in_team && !e.team))
+        if (p.is_vehicle || data.distance > e.player_distance || (data.is_in_team && !e.team))
             return;
+        const auto screen = projection ? projection->project(data.world_pos) : p.screen;
+        if (!screen.valid || screen.x < 0 || screen.y < 0 || screen.x >= screen_width || screen.y >= screen_height)
+            return;
+        game::ScreenPoint points[BONE_COUNT]{};
+        const auto* projected_bones = p.bones;
+        if (projection)
+        {
+            projected_bones = points;
+            if (data.has_bones)
+                for (int i = 0; i < BONE_COUNT; ++i)
+                {
+                    const auto& bone = data.bones[i];
+                    if (bone.X != 0 || bone.Y != 0 || bone.Z != 0)
+                        points[i] = projection->project(bone);
+                }
+        }
         float height = std::clamp(4200.f / std::max(data.distance, 1.f), 10.f, 180.f);
-        float center = p.screen.x, top = p.screen.y - height;
-        const auto& head = p.bones[BONE_HEAD];
-        const auto& root = p.bones[BONE_ROOT];
+        float center = screen.x, top = screen.y - height;
+        const auto& head = projected_bones[BONE_HEAD];
+        const auto& root = projected_bones[BONE_ROOT];
         const float measured = root.y - head.y;
         if (data.has_bones && !data.is_in_vehicle && head.valid && root.valid && measured >= 2 && measured <= screen_height && std::fabs(head.x - root.x) <= measured)
         {
@@ -84,7 +101,7 @@ namespace
         const bool targeted = selected && p.actor_addr == selected;
         const Color c = targeted ? color(palette.selected) : player_color(data, e.visible_color, e.not_visible_color);
         if (e.lines)
-            outlined_line(screen_width * 0.5f, static_cast<float>(screen_height), p.screen.x, p.screen.y, c);
+            outlined_line(screen_width * 0.5f, static_cast<float>(screen_height), screen.x, screen.y, c);
         if (e.box)
             box(left, top, width, height, c);
         if (e.skeleton && data.has_bones && !data.is_in_vehicle && data.distance <= e.skeleton_distance)
@@ -94,8 +111,8 @@ namespace
             skeleton.a *= std::clamp(1 - ratio, 0.4f, 1.f);
             for (const auto& pair : bones)
             {
-                const auto& a = p.bones[pair[0]];
-                const auto& b = p.bones[pair[1]];
+                const auto& a = projected_bones[pair[0]];
+                const auto& b = projected_bones[pair[1]];
                 if (a.valid && b.valid && std::fabs(a.x - b.x) < height * 2 && std::fabs(a.y - b.y) < height * 2)
                     outlined_line(a.x, a.y, b.x, b.y, skeleton, std::max(1.5f, 2.5f - ratio));
             }
@@ -111,21 +128,198 @@ namespace
         }
         const Color name = targeted ? c : player_color(data, palette.name_visible, palette.name_hidden);
         const Color background = color(palette.label_fill);
-        if (e.agent_name)
-            text(center, top - 21, data.player_name[0] ? data.player_name : L"Player", name, 13, true, background);
-        char label[48];
-        snprintf(label, sizeof(label), "%s%s%.0fm", data.is_on_mortar ? "MORTAR " : "", data.health <= 0 ? "DEAD " : "", data.distance);
-        if (e.distance)
-            text(center, bottom + 5, label, name, 12, true, background);
+        const int mode = config.extra.player_text;
+        const bool show_name = e.agent_name && mode != 2 && mode != 4;
+        const bool show_distance = e.distance && mode != 3 && mode != 4;
+        if (show_name || show_distance)
+        {
+            wchar_t label[32];
+            const wchar_t* player_name = data.player_name[0] ? data.player_name : L"Player";
+            const float label_x = mode == 1 && root.valid ? root.x : head.valid ? head.x
+                                                                                : center;
+            const float label_y = mode == 1 ? (root.valid ? root.y : bottom) + 5 : (head.valid ? head.y : top) - 21;
+            if (show_distance)
+                swprintf_s(label, show_name ? L"[%.0fm] " : L"[%.0fm]", data.distance);
+            if (show_name && show_distance)
+                text_pair(label_x, label_y, label, player_name, name, 13, background);
+            else
+                text(label_x, label_y, show_name ? player_name : label, name, 13, true, background);
+        }
     }
 
-    void world_actor(const game::ProjectedWorldActor& actor, Color c)
+    void world_actor(const game::ProjectedWorldActor& actor, Color c, const visual_math::Projection* projection)
     {
-        if (!actor.screen.valid)
+        const auto screen = projection ? projection->project(actor.actor.world_position) : actor.screen;
+        if (!screen.valid || screen.x < 0 || screen.y < 0 || screen.x >= screen_width || screen.y >= screen_height)
             return;
         char label[96];
         snprintf(label, sizeof(label), "%s  %.0fm", actor.actor.label, actor.actor.distance_meters);
-        text(actor.screen.x, actor.screen.y + 7, label, c, 12.5f, true, color(config.colors.label_fill));
+        text(screen.x, screen.y + 7, label, c, 12.5f, true, color(config.colors.label_fill));
+    }
+
+    Color rainbow(float hue, float alpha)
+    {
+        hue = hue - std::floor(hue);
+        const float h = hue * 6, f = h - std::floor(h);
+        switch (static_cast<int>(h))
+        {
+        case 0:
+            return {1, f, 0.15f, alpha};
+        case 1:
+            return {1 - f, 1, 0.15f, alpha};
+        case 2:
+            return {0.15f, 1, f, alpha};
+        case 3:
+            return {0.15f, 1 - f, 1, alpha};
+        case 4:
+            return {f, 0.15f, 1, alpha};
+        default:
+            return {1, 0.15f, 1 - f, alpha};
+        }
+    }
+
+    void arrow(float x, float y, float angle, float size, Color c)
+    {
+        const float dx = std::sin(angle), dy = -std::cos(angle);
+        const float tip_x = x + dx * size, tip_y = y + dy * size;
+        line(tip_x, tip_y, x - dx * size * 0.6f - dy * size * 0.7f, y - dy * size * 0.6f + dx * size * 0.7f, c, 1.5f);
+        line(tip_x, tip_y, x - dx * size * 0.6f + dy * size * 0.7f, y - dy * size * 0.6f - dx * size * 0.7f, c, 1.5f);
+    }
+
+    void effects(const game::Snapshot& snapshot, const visual_math::Projection& projection)
+    {
+        const auto& x = config.extra;
+        if (x.tracers)
+            for (const auto& trail : snapshot.trails)
+            {
+                game::ScreenPoint previous;
+                for (int i = 0; i < trail.count && i < trail.capacity; ++i)
+                {
+                    const auto point = projection.project(trail.points[i]);
+                    if (i && point.valid && previous.valid)
+                    {
+                        const float progress = static_cast<float>(i) / std::max(trail.count - 1, 1);
+                        Color c = color(x.tracer_color);
+                        if (x.tracer_style < 2)
+                            c = rainbow(trail.hue + (x.tracer_style == 0 ? progress * 0.8f : 0.f), c.a);
+                        else if (x.tracer_style == 3)
+                        {
+                            c.r += (x.tracer_end_color[0] - c.r) * progress;
+                            c.g += (x.tracer_end_color[1] - c.g) * progress;
+                            c.b += (x.tracer_end_color[2] - c.b) * progress;
+                        }
+                        c.a *= trail.alpha;
+                        line(previous.x, previous.y, point.x, point.y, c, x.tracer_width);
+                    }
+                    previous = point;
+                }
+            }
+        for (const auto& marker : snapshot.markers)
+        {
+            if (marker.bag ? !x.death_bags : !x.explosives)
+                continue;
+            const auto point = projection.project(marker.world);
+            if (!point.valid || point.x < 0 || point.y < 0 || point.x > screen_width || point.y > screen_height)
+                continue;
+            Color c = color(marker.bag ? x.bag_color : x.explosive_color);
+            if (marker.bag && marker.nearby)
+                c = color(config.colors.warning);
+            char label[96];
+            snprintf(label, sizeof(label), "%s  %.0fm", marker.label, marker.distance);
+            text(point.x, point.y, label, c, 12.5f, true, color(config.colors.label_fill));
+            if (marker.bag)
+            {
+                if (marker.nearby)
+                {
+                    snprintf(label, sizeof(label), "%d ON LOOT", marker.nearby);
+                    text(point.x, point.y + 16, label, c, 12, true);
+                }
+            }
+            else
+            {
+                if (marker.timed)
+                {
+                    snprintf(label, sizeof(label), "%.1fs", marker.fuse_left);
+                    rect(point.x - 20, point.y + 33, 40, 3, {0, 0, 0, 0.8f});
+                    rect(point.x - 20, point.y + 33, 40 * std::clamp(marker.fuse_left / marker.fuse_total, 0.f, 1.f), 3, c);
+                }
+                else
+                    strcpy_s(label, "ARMED");
+                text(point.x, point.y + 16, label, c, 12, true);
+            }
+        }
+    }
+
+    void mortar_radar(const game::Snapshot& snapshot)
+    {
+        const auto& m = snapshot.mortar;
+        const float radius = 130, x = screen_width * 0.5f, y = 182;
+        const float range = std::clamp(m.max_range_m, 100.f, 5000.f);
+        const float yaw = m.dbg_cur_yaw * 0.0174532925f;
+        const float cosine = std::cos(yaw), sine = std::sin(yaw), scale = (radius - 8) / (range * 100);
+        circle(x, y, radius, color(config.colors.radar_fill), true);
+        circle(x, y, radius, color(config.colors.mortar));
+        for (float f : {0.25f, 0.5f, 0.75f})
+            circle(x, y, radius * f, color(config.colors.radar_grid));
+        line(x - radius, y, x + radius, y, color(config.colors.radar_grid));
+        line(x, y - radius, x, y + radius, color(config.colors.radar_grid));
+        const auto point = [&](const FVector& world, Color c, float size)
+        {
+            const auto d = world - m.weapon_world_pos;
+            if (!visual_math::finite(d) || std::hypot(d.X, d.Y) > range * 100)
+                return;
+            circle(x + static_cast<float>(d.Y * cosine - d.X * sine) * scale, y - static_cast<float>(d.X * cosine + d.Y * sine) * scale, size, c, true);
+        };
+        for (const auto& p : snapshot.players)
+            if (!p.is_vehicle && p.player.health > 0 && (!p.player.is_in_team || config.extra.radar_team))
+                point(p.player.world_pos, player_color(p.player, config.esp.visible_color, config.esp.not_visible_color), 3);
+        for (const auto& v : snapshot.vehicles)
+            point(v.actor.world_position, vehicle_color(v), 4);
+        if (std::isfinite(m.range_m) && m.range_m > 0 && m.range_m <= range)
+        {
+            const float impact_y = y - m.range_m * 100 * scale;
+            const float spread = std::clamp(2500 * scale, 5.f, 28.f);
+            circle(x, impact_y, spread, {1, 0.1f, 0.1f, 0.25f}, true);
+            circle(x, impact_y, spread, {1, 0.1f, 0.1f, 1});
+        }
+        arrow(x, y, 0, 6, color(config.colors.radar_local));
+        char label[64];
+        snprintf(label, sizeof(label), "Impact %.0fm | %.0f mil", m.range_m, m.sight_mils);
+        text(x, y + radius + 6, label, color(config.colors.mortar), 13, true);
+    }
+
+    void feature_hud(const game::Snapshot& snapshot)
+    {
+        float y = 18;
+        const auto row = [&](const char* label)
+        {
+            text(18, y, label, color(config.colors.menu_accent), 13, false, color(config.colors.label_fill));
+            y += 18;
+        };
+        if (config.aimbot.enabled)
+            row(config.aimbot.bone == 4 ? "Aim | Nearest bone" : "Aim");
+        if (config.aimbot.silent_aim)
+            row("Silent aim");
+        if (config.aimbot.magic_bullet)
+            row("Magic Bullet");
+        if (config.prediction.enabled)
+            row("Prediction");
+        if (config.extra.no_recoil)
+            row("No recoil");
+        if (config.extra.explosives)
+            row("Explosives");
+        if (config.extra.death_bags)
+            row("Death bags");
+        if (config.extra.tracers)
+            row("Tracers");
+        if (config.extra.build_x)
+            row("Silent Build X");
+        if (config.extra.auto_join)
+            row("Auto join Manticore");
+        if (config.extra.anti_afk)
+            row("Anti AFK");
+        if (snapshot.mortar.valid)
+            row(config.extra.mortar_mode == 1 ? "Mortar | Impact radar" : "Mortar | Auto aim");
     }
 
     void radar(const game::Snapshot& snapshot)
@@ -139,7 +333,7 @@ namespace
         {
             range = 50;
             for (const auto& p : snapshot.players)
-                if (!p.player.is_in_team || e.team)
+                if (!p.player.is_in_team || config.extra.radar_team)
                     range = std::max(range, p.player.distance * 1.2f);
             for (const auto& v : snapshot.vehicles)
                 range = std::max(range, v.actor.distance_meters * 1.2f);
@@ -154,9 +348,22 @@ namespace
             circle(x, y, half * scale, grid);
         line(x - half, y, x + half, y, grid);
         line(x, y - half, x, y + half, grid);
-        const float yaw = static_cast<float>(snapshot.camera.rotation.Yaw * 3.141592653589793 / 180);
+        static float smoothed_yaw = 0;
+        static double last_time = -1;
+        static std::uintptr_t last_world = 0;
+        const float current_yaw = static_cast<float>(snapshot.camera.rotation.Yaw);
+        if (!config.extra.radar_smoothing || last_world != snapshot.world || last_time < 0 || snapshot.time < last_time || snapshot.time - last_time > 0.25)
+            smoothed_yaw = current_yaw;
+        else if (snapshot.time != last_time)
+        {
+            const float delta = std::remainder(current_yaw - smoothed_yaw, 360.f);
+            smoothed_yaw += delta * (1 - std::exp(-25.f * static_cast<float>(snapshot.time - last_time)));
+        }
+        last_world = snapshot.world;
+        last_time = snapshot.time;
+        const float yaw = smoothed_yaw * 0.0174532925f;
         const float cosine = std::cos(yaw), sine = std::sin(yaw);
-        const auto point = [&](const FVector& position, Color c, float radius)
+        const auto point = [&](const FVector& position, Color c, float radius, const Player* player = nullptr)
         {
             const float dx = static_cast<float>(position.X - snapshot.camera.location.X);
             const float dy = static_cast<float>(position.Y - snapshot.camera.location.Y);
@@ -164,16 +371,20 @@ namespace
             if (!std::isfinite(distance) || distance > range * 100)
                 return;
             const float scale = (half - 7) / (range * 100);
-            circle(x + (dy * cosine - dx * sine) * scale, y - (dx * cosine + dy * sine) * scale, radius, c, true);
+            const float px = x + (dy * cosine - dx * sine) * scale, py = y - (dx * cosine + dy * sine) * scale;
+            if (player && player->yaw_valid && config.extra.radar_directions)
+                arrow(px, py, (player->yaw - smoothed_yaw) * 0.0174532925f, config.extra.radar_arrow_size, c);
+            else
+                circle(px, py, radius, c, true);
         };
         for (const auto& p : snapshot.players)
-            if (!p.is_vehicle && p.player.health > 0 && (!p.player.is_in_team || e.team))
-                point(p.player.world_pos, player_color(p.player, e.visible_color, e.not_visible_color), 3);
+            if (!p.is_vehicle && p.player.health > 0 && (!p.player.is_in_team || config.extra.radar_team))
+                point(p.player.world_pos, player_color(p.player, e.visible_color, e.not_visible_color), 3, &p.player);
         if (e.vehicles)
             for (const auto& v : snapshot.vehicles)
                 point(v.actor.world_position, vehicle_color(v), 4);
         circle(x, y, 3, local, true);
-        const float heading = snapshot.local_yaw_valid ? (snapshot.local_yaw - static_cast<float>(snapshot.camera.rotation.Yaw)) * 0.0174532925f : 0;
+        const float heading = snapshot.local_yaw_valid ? (snapshot.local_yaw - smoothed_yaw) * 0.0174532925f : 0;
         line(x, y, x + std::sin(heading) * 12, y - std::cos(heading) * 12, local, 2);
         char label[32];
         snprintf(label, sizeof(label), "%.0fm", range);
@@ -181,31 +392,48 @@ namespace
     }
 } // namespace
 
-void visuals::draw(const game::Snapshot& snapshot)
+void visuals::draw(const game::Snapshot& snapshot, const CameraIPC* camera)
 {
     if (!snapshot.valid)
         return;
+    const visual_math::Projection projection(camera ? *camera : snapshot.camera);
+    const auto* fresh = camera ? &projection : nullptr;
+    effects(snapshot, projection);
+    if (config.extra.feature_hud)
+        feature_hud(snapshot);
     const Color mortar_color = color(config.colors.mortar), warning_color = color(config.colors.warning);
     const Color prediction = color(config.colors.prediction);
     const auto selected = snapshot.mortar.valid && config.mortar.mortar_aim ? snapshot.mortar.selected_actor : snapshot.aim_selected_actor;
     if (config.esp.enabled)
         for (const auto& p : snapshot.players)
-            player(p, selected);
+            player(p, selected, fresh);
     if (config.esp.vehicles)
         for (const auto& v : snapshot.vehicles)
-            world_actor(v, vehicle_color(v));
+            world_actor(v, vehicle_color(v), fresh);
     if (config.esp.loot)
         for (const auto& item : snapshot.dropped_items)
-            world_actor(item, color(config.esp.loot_color));
+        {
+            const bool enriched = config.extra.death_bags && std::any_of(snapshot.markers.begin(), snapshot.markers.end(), [&](const auto& marker)
+                                                                         { return marker.bag && marker.actor == item.actor.address; });
+            if (!enriched)
+                world_actor(item, color(config.esp.loot_color), fresh);
+        }
     if (config.esp.minimap)
         radar(snapshot);
     if (snapshot.prediction_line.valid && config.prediction.enabled && config.prediction.show_line)
     {
         const auto& p = snapshot.prediction_line;
-        outlined_line(p.bone.x, p.bone.y, p.aim.x, p.aim.y, prediction);
-        circle(p.aim.x, p.aim.y, 3, prediction);
+        const auto bone = fresh ? projection.project(p.bone_world) : p.bone;
+        const auto aim = fresh ? projection.project(p.aim_world) : p.aim;
+        if (bone.valid && aim.valid)
+        {
+            outlined_line(bone.x, bone.y, aim.x, aim.y, prediction);
+            circle(aim.x, aim.y, 3, prediction);
+        }
     }
-    if (snapshot.mortar.valid)
+    if (snapshot.mortar.valid && config.extra.mortar_mode == 1)
+        mortar_radar(snapshot);
+    else if (snapshot.mortar.valid)
     {
         const auto& m = snapshot.mortar;
         char label[96];

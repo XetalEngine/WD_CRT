@@ -19,6 +19,7 @@ namespace overlay
     void circle(float x, float y, float radius, Color color, bool fill = false, float thickness = 1.f);
     void text(float x, float y, const wchar_t* value, Color color = white, float size = 14.f, bool centered = false, Color background = {});
     void text(float x, float y, const char* value, Color color = white, float size = 14.f, bool centered = false, Color background = {});
+    void text_pair(float x, float y, const wchar_t* prefix, const wchar_t* value, Color color, float size, Color background = {});
     inline Color color(const float* c)
     {
         return {c[0], c[1], c[2], c[3]};

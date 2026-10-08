@@ -13,10 +13,37 @@ namespace
     float drag_x, drag_y;
     int tab;
     bool clicked, held, dragging, stop, binding;
-    bool old_insert, old_end, old_mouse;
+    bool old_insert, old_end, old_mouse, old_backspace, old_up, old_down;
     bool binding_keys[256]{};
     float* active_slider;
-    const char* status = "Insert: menu    End: stop";
+    const char* status = "Insert: menu    Backspace: labels    Up/Down: FOV    End: stop";
+
+    void set_player_text(int mode)
+    {
+        config.extra.player_text = mode;
+        config.esp.agent_name = mode == 0 || mode == 1 || mode == 3;
+        config.esp.distance = mode <= 2;
+    }
+
+    void update_backspace(bool down)
+    {
+        if (down && !old_backspace && !binding)
+            set_player_text((config.extra.player_text + 1) % 5);
+        old_backspace = down;
+    }
+
+    void update_fov(bool up, bool down)
+    {
+        if (!binding && !(up && down))
+        {
+            if (up && !old_up)
+                config.aimbot.fov = std::min(config.aimbot.fov + 5.f, 800.f);
+            if (down && !old_down)
+                config.aimbot.fov = std::max(config.aimbot.fov - 5.f, 1.f);
+        }
+        old_up = up;
+        old_down = down;
+    }
 
     bool inside(float a, float b, float w, float h)
     {
@@ -121,6 +148,8 @@ void menu::update()
         stop = true;
     old_insert = insert;
     old_end = end;
+    update_backspace((GetAsyncKeyState(VK_BACK) & 0x8000) != 0);
+    update_fov((GetAsyncKeyState(VK_UP) & 0x8000) != 0, (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0);
     POINT cursor{};
     const bool cursor_valid = !menu_open || GetCursorPos(&cursor);
     if (menu_open && cursor_valid)
@@ -146,7 +175,7 @@ void menu::update()
             const bool down = (GetAsyncKeyState(key) & 0x8000) != 0;
             if (down && !binding_keys[key])
             {
-                if (key != VK_ESCAPE && key != VK_INSERT && key != VK_END)
+                if (key != VK_ESCAPE && key != VK_INSERT && key != VK_END && key != VK_BACK && key != VK_UP && key != VK_DOWN)
                     config.aimbot.key = key;
                 binding = false;
                 clicked = false;
@@ -186,13 +215,14 @@ void menu::draw()
     rect(x, y, width, height, color(config.colors.menu_accent), false);
     text(x + 18, y + 9, "X-Engine", color(config.colors.menu_accent), 17);
     text(x + 450, y + 12, "Insert to close", muted, 12);
-    const char* tabs[]{"Aim", "Players", "World", "Mortar", "Colors", "Settings"};
-    for (int i = 0; i < 6; ++i)
-        if (button(x + 18 + i * 104, y + 46, 100, tabs[i], i == tab))
+    const char* tabs[]{"Aim", "Players", "World", "Mortar", "Effects", "Colors", "Settings"};
+    for (int i = 0; i < 7; ++i)
+        if (button(x + 18 + i * 90, y + 46, 86, tabs[i], i == tab))
             tab = i;
     auto& e = config.esp;
     auto& a = config.aimbot;
-    const char* bones[]{"Head", "Neck", "Chest", "Pelvis"};
+    const char* bones[]{"Head", "Neck", "Chest", "Pelvis", "Nearest"};
+    const char* labels[]{"Both above", "Both below", "Distance", "Name", "Off"};
     const char* modes[]{"Distance", "Crosshair", "Health"};
     const char* boxes[]{"Corners", "Full"};
     switch (tab)
@@ -202,9 +232,9 @@ void menu::draw()
         toggle(0, 1, "Draw FOV", a.draw_fov);
         toggle(0, 2, "Visibility check", a.visible_check);
         toggle(0, 3, "Team check", a.team_check);
-        choice(0, 4, "Target bone", a.bone, bones, 4);
+        choice(0, 4, "Target bone", a.bone, bones, 5);
         choice(0, 5, "Target priority", a.mode, modes, 3);
-        number(0, 6, "FOV (pixels)", a.fov, 5, 1, 800);
+        number(0, 6, "FOV (Up/Down)", a.fov, 5, 1, 800);
         integer(0, 7, "Aim speed", a.smooth, 1, 50);
         text(x + 18, y + 331, "Aim key", color(config.colors.menu_text));
         {
@@ -221,6 +251,7 @@ void menu::draw()
         toggle(1, 0, "Silent aim", a.silent_aim);
         toggle(1, 1, "Magic bullet", a.magic_bullet);
         number(1, 2, "Release delay (s)", a.magic_bullet_delay_off, 0.1f, 0, 10, "%.1f");
+        toggle(1, 3, "No recoil", config.extra.no_recoil);
         toggle(1, 4, "Prediction", config.prediction.enabled);
         toggle(1, 5, "Bullet drop", config.prediction.bullet_drop);
         toggle(1, 6, "Velocity lead", config.prediction.velocity_lead);
@@ -239,12 +270,25 @@ void menu::draw()
         toggle(1, 1, "Show teammates", e.team);
         number(1, 4, "Player range (m)", e.player_distance, 50, 1, 2000);
         number(1, 5, "Skeleton range (m)", e.skeleton_distance, 25, 1, 500);
+        {
+            int mode = config.extra.player_text;
+            choice(1, 7, "Player text", mode, labels, 5);
+            if (mode != config.extra.player_text)
+                set_player_text(mode);
+        }
         break;
     case 2:
         toggle(0, 0, "Vehicles", e.vehicles);
         number(0, 1, "Vehicle range (m)", e.vehicle_distance, 100, 1, 5000);
         toggle(0, 3, "Dropped items", e.loot);
         number(0, 4, "Item range (m)", e.loot_distance, 10, 1, 2000);
+        toggle(0, 5, "Explosives", config.extra.explosives);
+        number(0, 6, "Explosive range", config.extra.explosive_range, 25, 10, 1000);
+        toggle(0, 7, "Death bag info", config.extra.death_bags);
+        number(0, 8, "Bag range (m)", config.extra.bag_range, 25, 10, 1000);
+        toggle(1, 7, "Facing arrows", config.extra.radar_directions);
+        toggle(1, 9, "Radar teammates", config.extra.radar_team);
+        toggle(1, 10, "Smooth radar yaw", config.extra.radar_smoothing);
         toggle(1, 0, "Radar", e.minimap);
         toggle(1, 1, "Automatic range", e.minimap_auto_range);
         number(1, 2, "Radar range (m)", e.minimap_range, 25, 25, 5000);
@@ -261,11 +305,31 @@ void menu::draw()
     case 3:
         toggle(0, 0, "Mortar aim", config.mortar.mortar_aim);
         number(0, 1, "FOV (degrees)", config.mortar.fov, 5, 1, 180);
+        {
+            const char* modes[]{"Auto aim", "Impact radar"};
+            choice(0, 3, "Main mode", config.extra.mortar_mode, modes, 2);
+        }
+        text(x + 18, y + 298, "Impact radar: aim the mortar manually.", muted);
         toggle(1, 0, "Automatic flares", config.anti_sam.auto_flare);
         toggle(1, 1, "SAM warning", config.anti_sam.flare_warning);
         text(x + 18, y + 268, "Page Up / Page Down: change mortar target", muted);
         break;
     case 4:
+    {
+        const char* styles[]{"Rainbow trail", "Rainbow shots", "Solid", "Gradient"};
+        toggle(0, 0, "Bullet tracers", config.extra.tracers);
+        choice(0, 1, "Tracer color", config.extra.tracer_style, styles, 4);
+        number(0, 2, "Lifetime (s)", config.extra.tracer_lifetime, 0.25f, 0.25f, 5, "%.2f");
+        number(0, 3, "Line width", config.extra.tracer_width, 0.5f, 1, 4, "%.1f");
+        number(0, 5, "Radar arrow size", config.extra.radar_arrow_size, 1, 3, 10);
+        toggle(1, 0, "Auto join Manticore", config.extra.auto_join);
+        toggle(1, 1, "Anti AFK", config.extra.anti_afk);
+        toggle(1, 2, "Active features HUD", config.extra.feature_hud);
+        toggle(1, 3, "Silent Build X", config.extra.build_x);
+        text(x + 18, y + 328, "Tracer colors: Colors > Effects", muted);
+        break;
+    }
+    case 5:
     {
         static int group, selected;
         const char* groups[]{"Players", "World", "Effects", "Radar", "Menu"};
@@ -280,12 +344,12 @@ void menu::draw()
             float* value;
         };
         Entry players[]{{"Visible box", e.visible_color}, {"Hidden box", e.not_visible_color}, {"Team", c.team}, {"Dead", c.dead}, {"Selected", c.selected}, {"Visible bones", c.skeleton_visible}, {"Hidden bones", c.skeleton_hidden}, {"Visible text", c.name_visible}, {"Hidden text", c.name_hidden}, {"Full health", c.health_full}, {"Low health", c.health_low}};
-        Entry world[]{{"Vehicles", e.vehicle_color}, {"Items", e.loot_color}, {"SAM vehicles", c.sam}};
-        Entry effects[]{{"Mortar", c.mortar}, {"Prediction", c.prediction}, {"Aim FOV", c.fov}, {"SAM warning", c.warning}, {"Box shading", c.box_fill}, {"Label shading", c.label_fill}, {"Line glow", c.glow}};
+        Entry world[]{{"Vehicles", e.vehicle_color}, {"Items", e.loot_color}, {"SAM vehicles", c.sam}, {"Explosives", config.extra.explosive_color}, {"Death bags", config.extra.bag_color}};
+        Entry effects[]{{"Mortar", c.mortar}, {"Prediction", c.prediction}, {"Aim FOV", c.fov}, {"SAM warning", c.warning}, {"Box shading", c.box_fill}, {"Label shading", c.label_fill}, {"Line glow", c.glow}, {"Tracer start", config.extra.tracer_color}, {"Tracer end", config.extra.tracer_end_color}};
         Entry radar[]{{"Background", c.radar_fill}, {"Grid", c.radar_grid}, {"Border", c.radar_border}, {"Local marker", c.radar_local}};
         Entry menu[]{{"Accent", c.menu_accent}, {"Background", c.menu_fill}, {"Labels", c.menu_text}, {"Values", c.menu_value}};
         Entry* entries[]{players, world, effects, radar, menu};
-        const int counts[]{11, 3, 7, 4, 4};
+        const int counts[]{11, 5, 9, 4, 4};
         text(x + 18, y + 121, "Color", color(c.menu_text));
         if (button(x + 146, y + 118, 164, entries[group][selected].name))
             selected = (selected + 1) % counts[group];
@@ -303,6 +367,10 @@ void menu::draw()
         {
             const Config defaults;
             c = defaults.colors;
+            memcpy(config.extra.tracer_color, defaults.extra.tracer_color, sizeof(config.extra.tracer_color));
+            memcpy(config.extra.tracer_end_color, defaults.extra.tracer_end_color, sizeof(config.extra.tracer_end_color));
+            memcpy(config.extra.explosive_color, defaults.extra.explosive_color, sizeof(config.extra.explosive_color));
+            memcpy(config.extra.bag_color, defaults.extra.bag_color, sizeof(config.extra.bag_color));
             memcpy(e.visible_color, defaults.esp.visible_color, sizeof(e.visible_color));
             memcpy(e.not_visible_color, defaults.esp.not_visible_color, sizeof(e.not_visible_color));
             memcpy(e.vehicle_color, defaults.esp.vehicle_color, sizeof(e.vehicle_color));
@@ -310,7 +378,7 @@ void menu::draw()
         }
     }
     break;
-    case 5:
+    case 6:
         if (button(x + 18, y + 88, 292, "Save settings"))
             status = save_config() ? "Settings saved" : "Save failed";
         if (button(x + 18, y + 128, 292, "Load settings"))
@@ -322,6 +390,10 @@ void menu::draw()
         }
         if (button(x + 334, y + 88, 292, "Stop"))
             stop = true;
+        if (button(x + 334, y + 128, 292, "Copy settings"))
+            status = copy_config() ? "Settings copied to clipboard" : "Clipboard unavailable";
+        if (button(x + 334, y + 168, 292, "Paste settings"))
+            status = paste_config() ? "Settings imported; save to keep them" : "Invalid settings or clipboard unavailable";
         text(x + 18, y + 244, "Settings are saved only when you press Save.", muted);
         text(x + 18, y + 274, "Stop releases drawing resources. The DLL stays loaded.", muted);
         break;
@@ -333,6 +405,16 @@ void menu::draw()
 }
 
 #ifdef WD_TEST
+void menu::test_fov(bool up, bool down)
+{
+    update_fov(up, down);
+}
+
+void menu::test_backspace(bool down)
+{
+    update_backspace(down);
+}
+
 void menu::test_input(int selected_tab, float a, float b, bool click, bool down)
 {
     tab = selected_tab;

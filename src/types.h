@@ -45,6 +45,8 @@ struct Player
     bool is_in_team;
     bool is_on_mortar;
     bool is_in_vehicle;
+    float yaw = 0;
+    bool yaw_valid = false;
 };
 
 struct CameraIPC

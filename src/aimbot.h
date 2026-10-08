@@ -6,6 +6,7 @@ struct PredictionSettings;
 namespace aimbot
 {
     void reset();
+    int target_bone(const game::ProjectedPlayer& player, int configured);
 
     struct VehicleAimContext
     {

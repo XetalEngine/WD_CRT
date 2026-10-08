@@ -32,4 +32,7 @@ if ($Test) {
         if ($LASTEXITCODE) { exit $LASTEXITCODE }
     } finally { Pop-Location }
 }
-Get-Item (Join-Path $PSScriptRoot 'build\wd.dll') | Select-Object Name, Length
+[xml]$project = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'wd.vcxproj')
+$outputDirectory = $project.SelectSingleNode("//*[local-name()='OutDir']").InnerText.Replace('$(ProjectDir)', ($PSScriptRoot + '\'))
+$outputName = $project.SelectSingleNode("//*[local-name()='TargetName']").InnerText + '.dll'
+Get-Item -LiteralPath (Join-Path $outputDirectory $outputName) | Select-Object FullName, Length

@@ -54,6 +54,10 @@
     <ClCompile Include="..\src\config.cpp" />
     <ClCompile Include="..\src\engine_funcs.cpp" />
     <ClCompile Include="..\src\game.cpp" />
+    <ClCompile Include="..\src\extras.cpp" />
+    <ClCompile Include="..\src\tracers.cpp" />
+    <ClCompile Include="..\src\game_actions.cpp" />
+
     <ClCompile Include="..\src\magic_bullet.cpp" />
     <ClCompile Include="..\src\mortar_aim.cpp" />
     <ClCompile Include="..\src\offsets.cpp" />
@@ -69,6 +73,7 @@
     <ClCompile Include="frame_exchange.cpp" />
     <ClCompile Include="name_conversion.cpp" />
     <ClCompile Include="transitions.cpp" />
+    <ClCompile Include="features.cpp" />
     <ClCompile Include="crowded.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

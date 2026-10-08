@@ -7,7 +7,7 @@ struct AimbotSettings
     bool draw_fov = true;
     bool visible_check = true;
     bool team_check = true;
-    int bone = 0;
+    int bone = 4; // nearest projected bone
     int mode = 0;
     int key = VK_LBUTTON;
     float fov = 80.f;
@@ -110,9 +110,41 @@ struct Config
         float menu_text[4] = {1, 127.f / 255, 0, 1};
         float menu_value[4] = {1, 1, 0, 1};
     } colors;
+
+    // Version 3: keep the older settings layout intact.
+    struct
+    {
+        bool no_recoil = false;
+        bool explosives = true;
+        bool death_bags = true;
+        bool tracers = false;
+        bool radar_directions = true;
+        bool radar_team = false;
+        bool radar_smoothing = true;
+        bool auto_join = false;
+        bool anti_afk = false;
+        bool feature_hud = false;
+        bool build_x = false;
+        int tracer_style = 0; // rainbow trail, per-shot rainbow, solid, gradient
+        int mortar_mode = 0;  // auto aim, manual impact radar
+        float explosive_range = 200.f;
+        float bag_range = 150.f;
+        float tracer_lifetime = 2.f;
+        float tracer_width = 1.5f;
+        float radar_arrow_size = 5.f;
+        float tracer_color[4] = {0.f, 0.62f, 1.f, 1.f};
+        float tracer_end_color[4] = {1.f, 0.15f, 0.65f, 1.f};
+        float explosive_color[4] = {1.f, 0.35f, 0.1f, 1.f};
+        float bag_color[4] = {1.f, 0.78f, 0.35f, 1.f};
+        int player_text = 0; // both above, both below, distance, name, off
+    } extra;
 };
 
 inline Config config;
 bool save_config();
 bool load_config();
 void validate_config(Config& value);
+bool copy_config();
+bool paste_config();
+std::string encode_config(const Config& value);
+bool decode_config(const char* text, std::size_t length, Config& value);

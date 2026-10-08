@@ -19,6 +19,15 @@ namespace
         snapshot.dropped_items.resize(2);
         for (auto& item : snapshot.dropped_items)
             item.actor.address = value;
+        snapshot.markers.resize(3);
+        for (auto& marker : snapshot.markers)
+            marker.actor = value;
+        snapshot.trails.resize(2);
+        for (auto& trail : snapshot.trails)
+        {
+            trail.count = 2;
+            trail.points[0].X = value;
+        }
         snapshot.mortar.candidates.resize(4);
         for (auto& candidate : snapshot.mortar.candidates)
             candidate.actor_addr = value;
@@ -40,6 +49,12 @@ namespace
                 return false;
         for (const auto& candidate : snapshot.mortar.candidates)
             if (candidate.actor_addr != value)
+                return false;
+        for (const auto& marker : snapshot.markers)
+            if (marker.actor != value)
+                return false;
+        for (const auto& trail : snapshot.trails)
+            if (trail.points[0].X != value || trail.count != 2)
                 return false;
         return true;
     }

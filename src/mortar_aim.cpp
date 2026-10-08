@@ -862,6 +862,7 @@ bool wdgs::mortar_aim::try_read(std::uintptr_t pawn, std::uintptr_t camera_manag
 
     output.vehicle_pitch = veh_att.pitch;
     output.vehicle_yaw = veh_att.yaw;
+    output.dbg_cur_yaw = static_cast<float>(target_rot.Yaw + veh_att.yaw);
 
     float pitch_deg = target_rot.Pitch + veh_att.pitch;
     if (!std::isfinite(pitch_deg))

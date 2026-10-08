@@ -78,9 +78,11 @@ int test_transitions()
         snapshot.players.resize(1);
         snapshot.vehicles.resize(1);
         snapshot.dropped_items.resize(1);
+        snapshot.markers.resize(1);
+        snapshot.trails.resize(1);
         lookups = events = 0;
         game::tick(snapshot, settings, false);
-        return !snapshot.valid && snapshot.players.empty() && snapshot.vehicles.empty() && snapshot.dropped_items.empty();
+        return !snapshot.valid && snapshot.players.empty() && snapshot.vehicles.empty() && snapshot.dropped_items.empty() && snapshot.markers.empty() && snapshot.trails.empty();
     };
     check(tick() && lookups == 0 && events == 0, "missing world clears snapshot without native calls");
     world_pointer = world.address();

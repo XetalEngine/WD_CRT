@@ -1,3 +1,53 @@
+2026-10-08 camera latency and FOV controls
+
+Up / Down changes the aim FOV by +/-5 pixels per physical press (1-800).
+No repeat timer, focus query or new Windows import. Opposite keys cancel;
+aim-key binding reserves both keys. The game camera FOV is unchanged.
+
+The previous renderer reused screen coordinates computed during the entity
+scan. A camera turn could therefore leave ESP aligned with an older view.
+The update scan also called native ProjectWorldLocationToScreen for every
+actor and bone, while the camera could change between those calls.
+
+Now targeting uses one camera matrix per scan. At draw time, cached world
+positions/bones are projected with a fresh camera cache sample after GPU
+readiness and snapshot exchange. Two matching guarded camera copies reject
+a partially updated POV; bad values use the published camera. Invalid
+world/controller/pawn/camera links suppress the stale scene. No native game
+call, bone lookup, entity scan or new allocation is introduced in drawing.
+This does not extrapolate entity movement or add ESP smoothing.
+
+The raw camera layout and projection convention match the supplied spot
+GetCameraPOV/WorldToScreen code: CameraCachePrivate 0x1560 + POV 0x10.
+Scope zoom is already included in that FOV; it is not multiplied again.
+
+The old presentation interval 1 enabled VSync despite its comment. Replaced
+with D3DPRESENT_INTERVAL_IMMEDIATE and SetMaximumFrameLatency(1), preserving
+both shared surfaces, their completion queries, and nonblocking submission.
+Desktop composition and the separate game renderer can still add latency.
+
+Staging regression suite: 240 checks passed, 0 failures.
+Camera tests cover fresh yaw/zoom without entity publication, no ProcessEvent,
+invalid-cache fallback, unpossession, camera destruction and world exit.
+Captured left/center/right views of the same entity snapshot were inspected.
+
+1920x1080 synthetic crowd, 128 players, full skeletons/boxes/health/text:
+  Previous build, existing projection: median 4.335 ms static labels,
+    4.260 ms moving labels; wall 8.681 / 8.961 ms including test waits.
+  New build, camera sweeping over frozen entities: median 4.219 / 4.234 ms;
+    wall 7.555 / 7.536 ms including test waits.
+  Static text generated 0 new layouts per frame after a full sweep warmup.
+  Camera benchmark: 0 failures. See camera-before-bench.txt / camera-after-bench.txt.
+These scenes differ in camera motion/culling and presentation mode; the values
+show similar draw cost, not a measured game FPS improvement or input latency.
+
+No live-match camera alignment or end-to-end latency measurement was performed.
+
+Desktop release build: 230912 bytes; 119 imports (unchanged).
+Desktop regression suite: 240 checks passed, 0 failures.
+DLL SHA256: b6fc62850a447ab2228862cdcdbb916f1f9f06908ffa1e1336fbe40914dc5dba
+Existing Desktop compiler-option warnings remain; no compilation errors.
+
 PASS: no snapshot displayed before first publication
 PASS: complete initial snapshot handed to renderer
 PASS: no new publication retains the last complete frame
@@ -9,10 +59,93 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 2655
+Concurrent snapshot reads: 2852
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
+PASS: exact mid-match crash name is rejected before native conversion
+PASS: missing name-pool block is rejected before native conversion
+PASS: valid name still reaches native conversion
+PASS: empty name entry is rejected before native conversion
+PASS: allocate name-pool boundary regression fixture
+PASS: unreadable name payload is rejected before native conversion
+PASS: missing world clears snapshot without native calls
+PASS: frontend controller without a pawn never enters native initialization
+PASS: menu pawn without PlayerState never enters native initialization
+PASS: stale PlayerState ownership is rejected before native calls
+PASS: ready gameplay context reaches function resolution
+PASS: unchanged match retains its function-resolution state
+PASS: leaving match clears context without calling into the old world
+PASS: rejoining reacquires functions even when world address is reused
+PASS: direct world replacement resets function-resolution state
+PASS: unpossession stops native calls while world memory remains readable
+PASS: respawn rebuilds match state
+PASS: destroying context object prevents native work
+PASS: destroying context object prevents native work
+PASS: destroying context object prevents native work
+PASS: destroying context object prevents native work
+PASS: destroying context object prevents native work
+PASS: destroying context object prevents native work
+PASS: destroying context object prevents native work
+PASS: live objects still reach native ProcessEvent
+PASS: unready or destroyed object is rejected despite readable memory
+PASS: unready or destroyed UFunction is rejected
+PASS: unready or destroyed object is rejected despite readable memory
+PASS: unready or destroyed UFunction is rejected
+PASS: unready or destroyed object is rejected despite readable memory
+PASS: unready or destroyed UFunction is rejected
+PASS: unready or destroyed object is rejected despite readable memory
+PASS: unready or destroyed UFunction is rejected
+PASS: unready or destroyed object is rejected despite readable memory
+PASS: unready or destroyed UFunction is rejected
+PASS: unready or destroyed object is rejected despite readable memory
+PASS: unready or destroyed UFunction is rejected
+PASS: readable non-object memory is rejected before native call
+PASS: player labels default to combined text above the head
+PASS: Backspace advances once per press and wraps all five text modes
+PASS: Backspace advances once per press and wraps all five text modes
+PASS: Backspace advances once per press and wraps all five text modes
+PASS: Backspace advances once per press and wraps all five text modes
+PASS: Backspace advances once per press and wraps all five text modes
+PASS: Up increases aim FOV once per press
+PASS: Down decreases aim FOV
+PASS: FOV hotkey respects upper limit
+PASS: FOV hotkey respects lower limit
+PASS: opposite FOV hotkeys together do not change the setting
+PASS: requested feature defaults
+PASS: shared settings round trip with new feature fields
+PASS: corrupt shared settings rejected without replacing current settings
+PASS: truncated and missing settings rejected
+PASS: nearest bone includes limbs, excludes root, preserves fixed bone choices
+PASS: nearest bone ignores nonfinite projections
+PASS: missing projected bones cannot become a target
+PASS: effect projection rejects points behind the camera
+PASS: projectile redirect rejects another player's round
+PASS: silent projectile redirect accepts local infantry round
+PASS: redirect preserves projectile speed
+PASS: projectile redirect accepts local vehicle round
+PASS: landed projectiles are not modified
+PASS: 1000 rounds stay within the fixed tracer budget
+PASS: expired tracers clear without new shots
+PASS: reused projectile slot starts a separate trail
+PASS: no recoil changes only verified fields
+PASS: disabling no recoil restores original values
+PASS: Silent Build X uses the traced surface, not a fixed point behind the wall
+PASS: Silent Build X restores markers when disabled
+PASS: Build X restores a surviving decal removed from the manager map
+PASS: leaving the world discards Build X pointers without touching old objects
+PASS: auto join can reserve on deploy screen and respects its retry interval
+PASS: auto join commits after reservation
+PASS: auto join stops requesting once already on Manticore
+PASS: anti AFK does not turn immediately when enabled
+PASS: anti AFK acts only after its interval
+PASS: render camera advances without changing or waiting for entity publication
+PASS: late camera sample never calls native ProcessEvent
+PASS: fixed world geometry follows a rightward camera turn immediately
+PASS: invalid camera cache retains the complete published camera
+PASS: render rejects an old snapshot after unpossession
+PASS: render rejects a camera pending destruction
+PASS: render rejects the previous world before another entity scan finishes
 PASS: observe memory validation faults
 PASS: test allocation
 PASS: read at page boundary
@@ -30,6 +163,7 @@ PASS: save isolated test settings
 PASS: settings, palette and radar position round trip
 PASS: version 1 migration keeps custom settings and upgrades unchanged colors
 PASS: truncated version 2 settings are rejected
+PASS: version 2 migration supplies new defaults without overwriting old settings
 PASS: bad settings leave current state unchanged
 PASS: stationary trajectory
 PASS: velocity lead
@@ -42,7 +176,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.168 ms
+Busy-GPU stage 1 submission: 0.316 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -51,7 +185,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.096 ms
+Busy-GPU stage 2 submission: 0.145 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -60,13 +194,21 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.104 ms
+Busy-GPU stage 3 submission: 0.143 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
 PASS: two busy buffers skip drawing without blocking or disconnecting
 PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
+PASS: effect style 0 renders with markers and HUD
+PASS: effect style 1 renders with markers and HUD
+PASS: effect style 2 renders with markers and HUD
+PASS: effect style 3 renders with markers and HUD
+PASS: effect style 4 renders with markers and HUD
+PASS: begin menu frame
+PASS: present menu frame
+PASS: capture menu tab
 PASS: begin menu frame
 PASS: present menu frame
 PASS: capture menu tab
@@ -91,6 +233,15 @@ PASS: begin unchanged toggle frame
 PASS: toggle does not repeat without another click
 PASS: begin numeric setting frame
 PASS: numeric button changes actual setting
+PASS: tab press survives 1000 polls without drawing, release and cursor movement
+PASS: next tab responds without a cooldown
+PASS: toggle after tab change survives skipped menu frames
+PASS: held button does not repeat on the next menu frame
+PASS: release and press toggles again immediately
+PASS: discard a click outside the menu after one frame
+PASS: outside click cannot activate a control after cursor movement
+PASS: released slider press retains its original position across skipped frames
+PASS: released pending slider does not keep dragging
 PASS: radar X slider sets center coordinate
 PASS: radar slider drag clamps to right edge
 PASS: radar slider drag clamps to left edge
@@ -101,6 +252,22 @@ PASS: color channel slider changes player color
 PASS: begin scene frame
 PASS: feature drawing with sample data
 PASS: round radar has transparent corners and a top right center
+PASS: begin player label mode
+PASS: capture player label mode
+PASS: begin player label mode
+PASS: capture player label mode
+PASS: begin player label mode
+PASS: capture player label mode
+PASS: begin player label mode
+PASS: capture player label mode
+PASS: begin player label mode
+PASS: capture player label mode
+PASS: begin late camera projection frame
+PASS: camera turn renders from the same frozen entity snapshot
+PASS: begin late camera projection frame
+PASS: camera turn renders from the same frozen entity snapshot
+PASS: begin late camera projection frame
+PASS: camera turn renders from the same frozen entity snapshot
 PASS: begin radar boundary frame
 PASS: edge marker stays inside round radar
 PASS: begin moved radar frame
@@ -116,7 +283,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.407 ms CPU average, 6.125 ms max; 8.205 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.215 ms CPU average, 2.418 ms max; 10.359 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -128,7 +295,6 @@ PASS: present external frame
 PASS: external presentation preserves pixels and alpha
 0 failure(s)
 
-Name   Length
-----   ------
-wd.dll 191488
-
+FullName                          Length
+--------                          ------
+C:\xampp\htdocs\downloads\dll.dll 230912
