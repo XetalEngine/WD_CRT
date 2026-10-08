@@ -100,13 +100,16 @@ BOOL WINAPI DllMain(HMODULE, DWORD reason, LPVOID)
     if (reason == DLL_PROCESS_ATTACH)
     {
        // log("process attach");
-        HANDLE thread = CreateThread(nullptr, 0, run, nullptr, 0, nullptr);
-        if (!thread)
-        {
-           // log("startup thread creation failed");
-            return FALSE;
-        }
-        CloseHandle(thread);
+
+        run(0);
+
+        //HANDLE thread = CreateThread(nullptr, 0, run, nullptr, 0, nullptr);
+        //if (!thread)
+        //{
+        //   // log("startup thread creation failed");
+        //    return FALSE;
+        //}
+        //CloseHandle(thread);
     }
     return TRUE;
 }
