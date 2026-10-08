@@ -24,6 +24,22 @@ namespace wdgs::actors
 
         Definition g_definitions[] = {
             {L"B_WDCore_MoverPlayerCharacter_C", "Player", Kind::player, {}},
+            {L"GC_Player_DroppedItem_Stop_C", "Item", Kind::dropped_item, {}},
+            {L"WDRotaryVehicle", "Chopper", Kind::heli, {}},
+            {L"WDVehicleWeaponExtension", "Chopper", Kind::heli, {}},
+            {L"GC_Vehicle_Moving_PZH2000_C", "SPH", Kind::sph2, {}},
+            {L"GC_GC_Vehicle_Moving_TNK_01_C", "Tank", Kind::tank_la26, {}},
+            {L"GC_Vehicle_Moving_APC_C", "APC", Kind::apc, {}},
+            {L"GC_Vehicle_Moving_Buggy_C", "Buggy", Kind::buggy, {}},
+            {L"GC_Vehicle_Moving_Truck_C", "Truck", Kind::truck, {}},
+            {L"GC_Vehicle_Moving_Boat_C", "Boat", Kind::boat, {}},
+            {L"GC_Vehicle_Moving_Bike_C", "Motorcycle", Kind::motorcycle, {}},
+            {L"B_PhysicalContainer_C", "PContainer", Kind::backpack, {}},
+            {L"WDPlayerInventoryContainer", "Container", Kind::backpack, {}}};
+        std::size_t g_definition_count = sizeof(g_definitions) / sizeof(g_definitions[0]);
+
+      /*   Definition g_definitions[] = {
+            {L"B_WDCore_MoverPlayerCharacter_C", "Player", Kind::player, {}},
             {L"GC_Player_DroppedItem_Stop_C", "Dropped Item", Kind::dropped_item, {}},
             {L"WDRotaryVehicle", "Heli", Kind::heli, {}},
             {L"WDVehicleWeaponExtension", "Heli", Kind::heli, {}},
@@ -36,7 +52,7 @@ namespace wdgs::actors
             {L"GC_Vehicle_Moving_Bike_C", "Motorcycle", Kind::motorcycle, {}},
             {L"B_PhysicalContainer_C", "Backpack", Kind::backpack, {}},
             {L"WDPlayerInventoryContainer", "Backpack", Kind::backpack, {}}};
-        std::size_t g_definition_count = sizeof(g_definitions) / sizeof(g_definitions[0]);
+        std::size_t g_definition_count = sizeof(g_definitions) / sizeof(g_definitions[0]);*/
 
     } // namespace detail
 

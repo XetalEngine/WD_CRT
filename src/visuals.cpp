@@ -125,7 +125,6 @@ namespace
             return;
         char label[96];
         snprintf(label, sizeof(label), "%s  %.0fm", actor.actor.label, actor.actor.distance_meters);
-        circle(actor.screen.x, actor.screen.y, 3, c);
         text(actor.screen.x, actor.screen.y + 7, label, c, 12.5f, true, color(config.colors.label_fill));
     }
 

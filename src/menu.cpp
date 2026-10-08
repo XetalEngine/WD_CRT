@@ -208,8 +208,9 @@ void menu::draw()
         integer(0, 7, "Aim speed", a.smooth, 1, 50);
         text(x + 18, y + 331, "Aim key", color(config.colors.menu_text));
         {
-            char key[24];
-            snprintf(key, sizeof(key), "VK 0x%02X", a.key);
+            char key[24] = "Mouse 1";
+            if (a.key != VK_LBUTTON)
+                snprintf(key, sizeof(key), "VK 0x%02X", a.key);
             if (button(x + 182, y + 328, 128, binding ? "Press key..." : key))
             {
                 binding = true;

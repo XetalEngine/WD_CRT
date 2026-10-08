@@ -35,20 +35,25 @@
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <ExceptionHandling>false</ExceptionHandling>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
       <DisableSpecificWarnings>4244;4267;4305</DisableSpecificWarnings>
       <PreprocessorDefinitions>NDEBUG;_HAS_EXCEPTIONS=0;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalOptions>/Zc:threadSafeInit- /Zc:inline %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Zc:threadSafeInit- /clang:-fno-unwind-tables /clang:-mno-stack-arg-probe /clang:-fno-stack-clash-protection /clang:-ffreestanding /clang:-fno-builtin-memcpy %(AdditionalOptions)</AdditionalOptions>
       <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</BufferSecurityCheck>
+      <DebugInformationFormat Condition="'$(Configuration)|$(Platform)'=='Release|x64'">None</DebugInformationFormat>
+      <SDLCheck Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</SDLCheck>
+      <MultiProcessorCompilation Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <AdditionalDependencies>kernel32.lib;user32.lib;advapi32.lib;d3d9.lib;d3d11.lib;dxgi.lib;d2d1.lib;dwrite.lib</AdditionalDependencies>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <GenerateDebugInformation>false</GenerateDebugInformation>
-      <GenerateMapFile>true</GenerateMapFile>
+      <GenerateMapFile>false</GenerateMapFile>
       <GenerateManifest>false</GenerateManifest>
       <SubSystem>Windows</SubSystem>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/OPT:REF /OPT:ICF  /MERGE:.rdata=.text %(AdditionalOptions)</AdditionalOptions>
+      <DataExecutionPrevention Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</DataExecutionPrevention>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -76,7 +81,8 @@
     <ClInclude Include="src\classes.h" />
     <ClInclude Include="src\config.h" />
     <ClInclude Include="src\engine_funcs.h" />
-    <ClInclude Include="src\game.h" /><ClInclude Include="src\frame_exchange.h" />
+    <ClInclude Include="src\game.h" />
+    <ClInclude Include="src\frame_exchange.h" />
     <ClInclude Include="src\hook_process_event.h" />
     <ClInclude Include="src\magic_bullet.h" />
     <ClInclude Include="src\menu.h" />

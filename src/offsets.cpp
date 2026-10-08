@@ -202,72 +202,72 @@ namespace offsets
         if (gworld_addr)
         {
             UWorldPtr = resolve_rip(gworld_addr, 3, 7) - base;
-            log("offsets: GWorld = 0x%llX (RVA)", UWorldPtr);
+            //log(""offsets: GWorld = 0x%llX (RVA)", UWorldPtr);
         }
         else
         {
             UWorldPtr = 0xD095198;
-            log("offsets: GWorld pattern failed, using hardcoded 0x%llX", UWorldPtr);
+            //log(""offsets: GWorld pattern failed, using hardcoded 0x%llX", UWorldPtr);
         }
 
         auto gnames_addr = pattern_scan(base, "48 8D 0D ? ? ? ? E8 ? ? ? ? 4C 8B C0 C6 05 ? ? ? ? ? 8B D3 0F B7 C3 C1 EA ? 89 54 24 ? 89 44 24 ? 48 8B 4C 24 ? 49 8B 5C D0");
         if (gnames_addr)
         {
             GNames = resolve_rip(gnames_addr, 3, 7) - base;
-            log("offsets: GNames = 0x%llX (RVA)", GNames);
+            //log(""offsets: GNames = 0x%llX (RVA)", GNames);
         }
         else
         {
             GNames = 0xCE36240;
-            log("offsets: GNames pattern failed, using hardcoded 0x%llX", GNames);
+            //log(""offsets: GNames pattern failed, using hardcoded 0x%llX", GNames);
         }
 
         auto gobjects_addr = pattern_scan(base, "48 8B 0D ? ? ? ? 48 8B 14 D1 4A 8D 0C C2 EB ? 33 C9 48 8B 09 48 C1 F9 ? 0F BA E1 ? 72 ? 48 8B 40 ? EB ? 48 8B 48 ? 48 8D 54 24 ? 48 89 4C 24 ? 48 8D 4C 24 ? E8 ? ? ? ? EB ? 48 8D 15 ? ? ? ? 48 8D 4C 24 ? E8 ? ? ? ? 83 7C 24 ? ? 48 8D 15");
         if (gobjects_addr)
         {
             GObjects = resolve_rip(gobjects_addr, 3, 7) - base;
-            log("offsets: GObjects = 0x%llX (RVA)", GObjects);
+            //log(""offsets: GObjects = 0x%llX (RVA)", GObjects);
         }
         else
         {
             GObjects = 0xCF08A60;
-            log("offsets: GObjects pattern failed, using hardcoded 0x%llX", GObjects);
+            //log(""offsets: GObjects pattern failed, using hardcoded 0x%llX", GObjects);
         }
 
         auto staticfind_addr = pattern_scan(base, "4C 8B DC 53 55 56 57 48 81 EC ? ? ? ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 84 24 ? ? ? ? 49 8B 78");
         if (staticfind_addr)
         {
             Functions::StaticFindObject = staticfind_addr - base;
-            log("offsets: StaticFindObject = 0x%llX (RVA)", Functions::StaticFindObject);
+            //log(""offsets: StaticFindObject = 0x%llX (RVA)", Functions::StaticFindObject);
         }
         else
         {
             Functions::StaticFindObject = 0x18846E0;
-            log("offsets: StaticFindObject pattern failed, using hardcoded 0x%llX", Functions::StaticFindObject);
+            //log(""offsets: StaticFindObject pattern failed, using hardcoded 0x%llX", Functions::StaticFindObject);
         }
 
         auto processevent_addr = pattern_scan(base, "40 55 56 57 41 54 41 55 41 56 41 57 48 81 EC ? ? ? ? 48 8D 6C 24 ? 48 89 9D ? ? ? ? 48 8B 05 ? ? ? ? 48 33 C5 48 89 85 ? ? ? ? 8B 41");
         if (processevent_addr)
         {
             Functions::ProcessEvent = processevent_addr - base;
-            log("offsets: ProcessEvent = 0x%llX (RVA)", Functions::ProcessEvent);
+            //log(""offsets: ProcessEvent = 0x%llX (RVA)", Functions::ProcessEvent);
         }
         else
         {
             Functions::ProcessEvent = 0x1850CE0;
-            log("offsets: ProcessEvent pattern failed, using hardcoded 0x%llX", Functions::ProcessEvent);
+            //log(""offsets: ProcessEvent pattern failed, using hardcoded 0x%llX", Functions::ProcessEvent);
         }
 
         auto freeobjectname_addr = pattern_scan(base, "48 85 C9 74 ? 53 48 83 EC ? 48 8B D9 48 8B 0D");
         if (freeobjectname_addr)
         {
             Functions::FreeObjectName = freeobjectname_addr - base;
-            log("offsets: FreeObjectName = 0x%llX (RVA)", Functions::FreeObjectName);
+            //log(""offsets: FreeObjectName = 0x%llX (RVA)", Functions::FreeObjectName);
         }
         else
         {
             Functions::FreeObjectName = 0x1538E90;
-            log("offsets: FreeObjectName pattern failed, using hardcoded 0x%llX", Functions::FreeObjectName);
+            //log(""offsets: FreeObjectName pattern failed, using hardcoded 0x%llX", Functions::FreeObjectName);
         }
     }
 } // namespace offsets

@@ -604,7 +604,7 @@ namespace game
             if (g_match.world)
             {
                 shutdown();
-                log("match unavailable; caches cleared");
+                //log("match unavailable; caches cleared");
             }
             return;
         }
@@ -612,7 +612,7 @@ namespace game
         {
             shutdown();
             g_match = match;
-            log("match context ready");
+            //log("match context ready");
         }
         begin_actor_object_frame();
         auto world = reinterpret_cast<UWorld*>(match.world);

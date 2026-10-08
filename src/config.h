@@ -9,7 +9,7 @@ struct AimbotSettings
     bool team_check = true;
     int bone = 0;
     int mode = 0;
-    int key = 0x6;
+    int key = VK_LBUTTON;
     float fov = 80.f;
     int smooth = 15;
     bool silent_aim = false;
@@ -54,7 +54,7 @@ struct Config
         float loot_color[4] = {0, 1, 0, 1};
         bool vehicles = true;
         float vehicle_distance = 2000.f;
-        float vehicle_color[4] = {0, 191.f / 255, 1, 1};
+        float vehicle_color[4] = {0.0f, 0.62f, 1.0f, 1.0f};
         bool minimap = true;
         bool minimap_auto_range = true;
         float minimap_range = 300.f;

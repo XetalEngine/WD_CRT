@@ -277,7 +277,7 @@ bool overlay::flush()
             return false;
         if (FAILED(hr))
         {
-            log("overlay submission failed (0x%08lX)", static_cast<unsigned long>(hr));
+            //log(""overlay submission failed (0x%08lX)", static_cast<unsigned long>(hr));
             shutdown();
             return false;
         }
