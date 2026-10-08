@@ -1,0 +1,134 @@
+PASS: no snapshot displayed before first publication
+PASS: complete initial snapshot handed to renderer
+PASS: no new publication retains the last complete frame
+PASS: start separate snapshot producer
+PASS: producer paused during an incomplete scan
+PASS: render copy survives an incomplete producer scan
+PASS: producer publishes finished scan
+PASS: new frame replaces old frame only after publication
+PASS: producer holds the handoff lock
+PASS: busy handoff keeps the render copy without blocking
+PASS: 3000 publications preserve complete player, world and mortar data
+Concurrent snapshot reads: 2655
+PASS: stop joins producer and rejects further publication
+PASS: producer receives consistent settings and menu state on another thread
+PASS: completed invalid-world update clears the previous scene
+PASS: observe memory validation faults
+PASS: test allocation
+PASS: read at page boundary
+PASS: cross-page read fails and clears output
+PASS: cross-page pointer validation
+PASS: unwritable read output rejected
+PASS: protected write rejected
+PASS: unreadable write input rejected
+PASS: cross-page write rejected before modifying data
+PASS: invalid pointer ranges
+PASS: reject invalid pointer recorded in crash dump
+PASS: memory checks do not depend on local exception handlers
+PASS: settings validation
+PASS: save isolated test settings
+PASS: settings, palette and radar position round trip
+PASS: version 1 migration keeps custom settings and upgrades unchanged colors
+PASS: truncated version 2 settings are rejected
+PASS: bad settings leave current state unchanged
+PASS: stationary trajectory
+PASS: velocity lead
+PASS: invalid trajectory rejected
+PASS: renderer initializes on disposable window
+PASS: begin transparent frame
+PASS: DX9 presentation
+PASS: capture presentation buffer
+PASS: transparent background preserved
+PASS: premultiplied alpha preserved
+PASS: begin busy-GPU regression frame
+PASS: busy GPU queues work without blocking the caller
+Busy-GPU stage 1 submission: 0.168 ms
+PASS: draw, copy or present remains pending without a wait loop
+PASS: second buffer available while first is busy
+PASS: queue second frame while GPU busy
+PASS: two busy buffers skip drawing without blocking or disconnecting
+PASS: deferred frames eventually complete
+PASS: queued frames preserve order and final pixels
+PASS: begin busy-GPU regression frame
+PASS: busy GPU queues work without blocking the caller
+Busy-GPU stage 2 submission: 0.096 ms
+PASS: draw, copy or present remains pending without a wait loop
+PASS: second buffer available while first is busy
+PASS: queue second frame while GPU busy
+PASS: two busy buffers skip drawing without blocking or disconnecting
+PASS: deferred frames eventually complete
+PASS: queued frames preserve order and final pixels
+PASS: begin busy-GPU regression frame
+PASS: busy GPU queues work without blocking the caller
+Busy-GPU stage 3 submission: 0.104 ms
+PASS: draw, copy or present remains pending without a wait loop
+PASS: second buffer available while first is busy
+PASS: queue second frame while GPU busy
+PASS: two busy buffers skip drawing without blocking or disconnecting
+PASS: deferred frames eventually complete
+PASS: queued frames preserve order and final pixels
+PASS: begin menu frame
+PASS: present menu frame
+PASS: capture menu tab
+PASS: begin menu frame
+PASS: present menu frame
+PASS: capture menu tab
+PASS: begin menu frame
+PASS: present menu frame
+PASS: capture menu tab
+PASS: begin menu frame
+PASS: present menu frame
+PASS: capture menu tab
+PASS: begin menu frame
+PASS: present menu frame
+PASS: capture menu tab
+PASS: begin menu frame
+PASS: present menu frame
+PASS: capture menu tab
+PASS: begin toggle frame
+PASS: toggle changes actual setting
+PASS: begin unchanged toggle frame
+PASS: toggle does not repeat without another click
+PASS: begin numeric setting frame
+PASS: numeric button changes actual setting
+PASS: radar X slider sets center coordinate
+PASS: radar slider drag clamps to right edge
+PASS: radar slider drag clamps to left edge
+PASS: released radar slider stops changing
+PASS: radar Y slider moves independently
+PASS: reset radar restores automatic top right position
+PASS: color channel slider changes player color
+PASS: begin scene frame
+PASS: feature drawing with sample data
+PASS: round radar has transparent corners and a top right center
+PASS: begin radar boundary frame
+PASS: edge marker stays inside round radar
+PASS: begin moved radar frame
+PASS: radar moves without leaving its previous image
+PASS: begin box geometry frame
+PASS: box uses head/root height and half-height width without skeleton drawing
+PASS: begin box geometry frame
+PASS: box uses head/root height and half-height width without skeleton drawing
+PASS: begin empty world frame
+PASS: world transition clears previous drawing
+PASS: drawing retains the dimensions read at initialization
+PASS: present with cached dimensions
+PASS: fixed target content
+PASS: explicit initialization reads dimensions once
+PASS: 120 consecutive frames
+Menu draw/submit: 0.407 ms CPU average, 6.125 ms max; 8.205 ms/frame including test-only waits (no gameplay)
+PASS: drain a blank frame before stopping
+PASS: stopping clears the previous menu
+PASS: shutdown is repeatable
+PASS: missing overlay handled
+PASS: launch separate overlay owner
+PASS: attach to another process's window
+PASS: begin external frame
+PASS: present external frame
+PASS: external presentation preserves pixels and alpha
+0 failure(s)
+
+Name   Length
+----   ------
+wd.dll 191488
+

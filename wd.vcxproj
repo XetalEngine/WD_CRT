@@ -1,0 +1,98 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{9A317390-FF09-4C88-A5F2-89519E82B227}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>C:\xampp\htdocs\downloads</OutDir>
+    <IntDir>$(ProjectDir)build\obj\</IntDir>
+    <TargetName>dll</TargetName>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <Optimization>MinSpace</Optimization>
+      <FavorSizeOrSpeed>Size</FavorSizeOrSpeed>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <ExceptionHandling>false</ExceptionHandling>
+      <WarningLevel>Level3</WarningLevel>
+      <DisableSpecificWarnings>4244;4267;4305</DisableSpecificWarnings>
+      <PreprocessorDefinitions>NDEBUG;_HAS_EXCEPTIONS=0;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/Zc:threadSafeInit- /Zc:inline %(AdditionalOptions)</AdditionalOptions>
+      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</BufferSecurityCheck>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>kernel32.lib;user32.lib;advapi32.lib;d3d9.lib;d3d11.lib;dxgi.lib;d2d1.lib;dwrite.lib</AdditionalDependencies>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <GenerateMapFile>true</GenerateMapFile>
+      <GenerateManifest>false</GenerateManifest>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\actor_registry.cpp" />
+    <ClCompile Include="src\aimbot.cpp" />
+    <ClCompile Include="src\anti_sam.cpp" />
+    <ClCompile Include="src\config.cpp" />
+    <ClCompile Include="src\core.cpp" />
+    <ClCompile Include="src\engine_funcs.cpp" />
+    <ClCompile Include="src\game.cpp" />
+    <ClCompile Include="src\magic_bullet.cpp" />
+    <ClCompile Include="src\menu.cpp" />
+    <ClCompile Include="src\mortar_aim.cpp" />
+    <ClCompile Include="src\offsets.cpp" />
+    <ClCompile Include="src\overlay.cpp" />
+    <ClCompile Include="src\player_snapshot.cpp" />
+    <ClCompile Include="src\prediction.cpp" />
+    <ClCompile Include="src\projectile_subsystem.cpp" />
+    <ClCompile Include="src\visuals.cpp" />
+    <ClCompile Include="src\weapon_stats.cpp" />
+    <ClCompile Include="src\world_actor_snapshot.cpp" />
+    <ClInclude Include="src\actor_registry.h" />
+    <ClInclude Include="src\aimbot.h" />
+    <ClInclude Include="src\anti_sam.h" />
+    <ClInclude Include="src\classes.h" />
+    <ClInclude Include="src\config.h" />
+    <ClInclude Include="src\engine_funcs.h" />
+    <ClInclude Include="src\game.h" /><ClInclude Include="src\frame_exchange.h" />
+    <ClInclude Include="src\hook_process_event.h" />
+    <ClInclude Include="src\magic_bullet.h" />
+    <ClInclude Include="src\menu.h" />
+    <ClInclude Include="src\mortar_aim.h" />
+    <ClInclude Include="src\offsets.h" />
+    <ClInclude Include="src\overlay.h" />
+    <ClInclude Include="src\player_snapshot.h" />
+    <ClInclude Include="src\prediction.h" />
+    <ClInclude Include="src\projectile_subsystem.h" />
+    <ClInclude Include="src\stdafx.h" />
+    <ClInclude Include="src\structs.h" />
+    <ClInclude Include="src\types.h" />
+    <ClInclude Include="src\visuals.h" />
+    <ClInclude Include="src\weapon_stats.h" />
+    <ClInclude Include="src\world_actor_snapshot.h" />
+    <ClInclude Include="ultraglobal.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
