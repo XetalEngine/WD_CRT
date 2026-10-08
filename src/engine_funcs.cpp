@@ -332,92 +332,65 @@ bool engine_funcs::init()
         return g_functions_ready;
     g_last_resolve_attempt = now;
 
-    resolve_once(g_default_gameplay_statics, L"/Script/Engine.Default__GameplayStatics");
+    resolve_once(g_default_gameplay_statics,            L"/Script/Engine.Default__GameplayStatics");
     resolve_once(g_default_subsystem_blueprint_library, L"/Script/Engine.Default__SubsystemBlueprintLibrary");
-    resolve_function(g_fn_get_world_subsystem, L"/Script/Engine.SubsystemBlueprintLibrary:GetWorldSubsystem", L"/Script/Engine.SubsystemBlueprintLibrary.GetWorldSubsystem");
-    resolve_function(g_fn_get_air_density, L"/Script/WDGame.WDWeatherSubsystem:GetAirDensity", L"/Script/WDGame.WDWeatherSubsystem.GetAirDensity");
-    resolve_once(g_uclass_wd_weather_subsystem, L"/Script/WDGame.WDWeatherSubsystem");
+    resolve_function(g_fn_get_world_subsystem,          L"/Script/Engine.SubsystemBlueprintLibrary:GetWorldSubsystem", L"/Script/Engine.SubsystemBlueprintLibrary.GetWorldSubsystem");
+    resolve_function(g_fn_get_air_density,              L"/Script/WDGame.WDWeatherSubsystem:GetAirDensity", L"/Script/WDGame.WDWeatherSubsystem.GetAirDensity");
+    resolve_once(g_uclass_wd_weather_subsystem,         L"/Script/WDGame.WDWeatherSubsystem");
 
-    resolve_once(g_fn_get_player_controller, L"/Script/Engine.GameplayStatics:GetPlayerController");
+    resolve_once(g_fn_get_player_controller,            L"/Script/Engine.GameplayStatics:GetPlayerController");
+    resolve_once(g_fn_get_player_camera_manager,        L"/Script/Engine.GameplayStatics:GetPlayerCameraManager");
+    resolve_once(g_fn_get_player_state,                 L"/Script/Engine.GameplayStatics:GetPlayerState");
+    resolve_function(g_fn_get_world_delta_seconds,      L"/Script/Engine.GameplayStatics:GetWorldDeltaSeconds", L"/Script/Engine.GameplayStatics.GetWorldDeltaSeconds");
 
-    resolve_once(g_fn_get_player_camera_manager, L"/Script/Engine.GameplayStatics:GetPlayerCameraManager");
+    resolve_function(g_fn_get_time_seconds,             L"/Script/Engine.GameplayStatics:GetTimeSeconds", L"/Script/Engine.GameplayStatics.GetTimeSeconds");                                                        
+    resolve_once(g_fn_get_camera_location,              L"/Script/Engine.PlayerCameraManager:GetCameraLocation");                                                        
+    resolve_once(g_fn_get_camera_rotation,              L"/Script/Engine.PlayerCameraManager:GetCameraRotation");
+    resolve_once(g_fn_get_fov_angle,                    L"/Script/Engine.PlayerCameraManager:GetFOVAngle");                                                        
+    resolve_once(g_fn_k2_get_pawn,                      L"/Script/Engine.Controller:K2_GetPawn");                                                        
+    resolve_once(g_fn_k2_get_root_component,            L"/Script/Engine.Actor:K2_GetRootComponent");
+    resolve_once(g_fn_get_velocity,                     L"/Script/Engine.Actor:GetVelocity");
+    resolve_once(g_fn_k2_get_component_to_world,        L"/Script/Engine.SceneComponent:K2_GetComponentToWorld");                                                        
+    resolve_once(g_fn_get_anim_instance,                L"/Script/Engine.SkeletalMeshComponent:GetAnimInstance");                                                        
+    resolve_once(g_default_kismet_string_library,       L"/Script/Engine.Default__KismetStringLibrary");
+    resolve_once(g_fn_conv_string_to_name,              L"/Script/Engine.KismetStringLibrary:Conv_StringToName");                                                        
+    resolve_once(g_fn_conv_name_to_string,              L"/Script/Engine.KismetStringLibrary:Conv_NameToString");                                                        
+    resolve_once(g_fn_line_of_sight,                    L"/Script/Engine.Controller:LineOfSightTo");
+                                                        
+    resolve_once(g_fn_project_world,                    L"/Script/Engine.PlayerController:ProjectWorldLocationToScreen");                                                        
+    resolve_once(g_fn_get_current_health,               L"/Script/WDGame.WDVitalityComponent:GetCurrentHealth");                                                        
+    resolve_once(g_fn_get_max_health,                   L"/Script/WDGame.WDVitalityComponent:GetMaxHealth");                                                        
+    resolve_once(g_fn_get_bone_name,                    L"/Script/Engine.SkinnedMeshComponent:GetBoneName");
+    resolve_once(g_fn_get_socket_location,              L"/Script/Engine.SceneComponent:GetSocketLocation");
+    resolve_once(g_fn_get_socket_rotation,              L"/Script/Engine.SceneComponent:GetSocketRotation");                                                        
+    resolve_once(g_fn_get_all_socket_names,             L"/Script/Engine.SceneComponent:GetAllSocketNames");                                                        
+    resolve_once(g_fn_get_faction,                      L"/Script/WDGame.WDPlayerStateSession:GetFaction");
+                                                        
+    resolve_once(g_fn_get_vitality_component,           L"/Script/WDGame.WDMoverCharacter:GetVitalityComponent");
 
-    resolve_once(g_fn_get_player_state, L"/Script/Engine.GameplayStatics:GetPlayerState");
-
-    resolve_function(g_fn_get_world_delta_seconds, L"/Script/Engine.GameplayStatics:GetWorldDeltaSeconds", L"/Script/Engine.GameplayStatics.GetWorldDeltaSeconds");
-
-    resolve_function(g_fn_get_time_seconds, L"/Script/Engine.GameplayStatics:GetTimeSeconds", L"/Script/Engine.GameplayStatics.GetTimeSeconds");
-
-    resolve_once(g_fn_get_camera_location, L"/Script/Engine.PlayerCameraManager:GetCameraLocation");
-
-    resolve_once(g_fn_get_camera_rotation, L"/Script/Engine.PlayerCameraManager:GetCameraRotation");
-
-    resolve_once(g_fn_get_fov_angle, L"/Script/Engine.PlayerCameraManager:GetFOVAngle");
-
-    resolve_once(g_fn_k2_get_pawn, L"/Script/Engine.Controller:K2_GetPawn");
-
-    resolve_once(g_fn_k2_get_root_component, L"/Script/Engine.Actor:K2_GetRootComponent");
-
-    resolve_once(g_fn_get_velocity, L"/Script/Engine.Actor:GetVelocity");
-
-    resolve_once(g_fn_k2_get_component_to_world, L"/Script/Engine.SceneComponent:K2_GetComponentToWorld");
-
-    resolve_once(g_fn_get_anim_instance, L"/Script/Engine.SkeletalMeshComponent:GetAnimInstance");
-
-    resolve_once(g_default_kismet_string_library, L"/Script/Engine.Default__KismetStringLibrary");
-
-    resolve_once(g_fn_conv_string_to_name, L"/Script/Engine.KismetStringLibrary:Conv_StringToName");
-
-    resolve_once(g_fn_conv_name_to_string, L"/Script/Engine.KismetStringLibrary:Conv_NameToString");
-
-    resolve_once(g_fn_line_of_sight, L"/Script/Engine.Controller:LineOfSightTo");
-
-    resolve_once(g_fn_project_world, L"/Script/Engine.PlayerController:ProjectWorldLocationToScreen");
-
-    resolve_once(g_fn_get_current_health, L"/Script/WDGame.WDVitalityComponent:GetCurrentHealth");
-
-    resolve_once(g_fn_get_max_health, L"/Script/WDGame.WDVitalityComponent:GetMaxHealth");
-
-    resolve_once(g_fn_get_bone_name, L"/Script/Engine.SkinnedMeshComponent:GetBoneName");
-
-    resolve_once(g_fn_get_socket_location, L"/Script/Engine.SceneComponent:GetSocketLocation");
-    resolve_once(g_fn_get_socket_rotation, L"/Script/Engine.SceneComponent:GetSocketRotation");
-
-    resolve_once(g_fn_get_all_socket_names, L"/Script/Engine.SceneComponent:GetAllSocketNames");
-
-    resolve_once(g_fn_get_faction, L"/Script/WDGame.WDPlayerStateSession:GetFaction");
-
-    resolve_once(g_fn_get_vitality_component, L"/Script/WDGame.WDMoverCharacter:GetVitalityComponent");
-
-    resolve_once(g_fn_get_weapon_behavior_component, L"/Script/WDGame.WDCharacterAnimInstance:GetWeaponBehaviorComponent");
-    resolve_function(g_fn_get_weapon_stats, L"/Script/WDGame.WDWeaponComponent:GetWeaponStats", L"/Script/WDGame.WDWeaponComponent.GetWeaponStats");
-    resolve_function(g_fn_get_weapon_component, L"/Script/WDGame.WDVehicleWeaponExtension:GetWeaponComponent", L"/Script/WDGame.WDVehicleWeaponExtension.GetWeaponComponent");
-    resolve_function(g_fn_get_projectile_data, L"/Script/WDGame.WDWeaponOwner:GetProjectileData", L"/Script/WDGame.WDWeaponOwner.GetProjectileData");
-    resolve_function(g_fn_get_projectile_stats, L"/Script/WDGame.WDProjectileData:BP_GetProjectileStats", L"/Script/WDGame.WDProjectileData.BP_GetProjectileStats");
+    resolve_once(g_fn_get_weapon_behavior_component,    L"/Script/WDGame.WDCharacterAnimInstance:GetWeaponBehaviorComponent");
+    resolve_function(g_fn_get_weapon_stats,             L"/Script/WDGame.WDWeaponComponent:GetWeaponStats", L"/Script/WDGame.WDWeaponComponent.GetWeaponStats");
+    resolve_function(g_fn_get_weapon_component,         L"/Script/WDGame.WDVehicleWeaponExtension:GetWeaponComponent", L"/Script/WDGame.WDVehicleWeaponExtension.GetWeaponComponent");
+    resolve_function(g_fn_get_projectile_data,          L"/Script/WDGame.WDWeaponOwner:GetProjectileData", L"/Script/WDGame.WDWeaponOwner.GetProjectileData");
+    resolve_function(g_fn_get_projectile_stats,         L"/Script/WDGame.WDProjectileData:BP_GetProjectileStats", L"/Script/WDGame.WDProjectileData.BP_GetProjectileStats");
 
     resolve_once(g_default_wd_artillery_range_library, L"/Script/WDGame.Default__WDArtilleryRangeLibrary");
-    resolve_function(g_fn_simulate_impact_distance, L"/Script/WDGame.WDArtilleryRangeLibrary:SimulateImpactDistance", L"/Script/WDGame.WDArtilleryRangeLibrary.SimulateImpactDistance");
+    resolve_function(g_fn_simulate_impact_distance,    L"/Script/WDGame.WDArtilleryRangeLibrary:SimulateImpactDistance", L"/Script/WDGame.WDArtilleryRangeLibrary.SimulateImpactDistance");
 
-    resolve_once(g_fn_set_control_rotation, L"/Script/Engine.Controller:SetControlRotation");
+    resolve_once(g_fn_set_control_rotation,            L"/Script/Engine.Controller:SetControlRotation");                                                       
+    resolve_once(g_fn_get_control_rotation,            L"/Script/Engine.Controller:GetControlRotation");                                                       
+    resolve_once(g_default_kismet_math_library,        L"/Script/Engine.Default__KismetMathLibrary");
+    resolve_once(g_fn_rinterp_to,                      L"/Script/Engine.KismetMathLibrary:RInterpTo");                                                       
+    resolve_once(g_fn_find_look_at_rotation,           L"/Script/Engine.KismetMathLibrary:FindLookAtRotation");                                                       
+    resolve_once(g_fn_k2_set_actor_rotation,           L"/Script/Engine.Actor:K2_SetActorRotation");
+    resolve_once(g_fn_add_yaw_input,                   L"/Script/Engine.PlayerController:AddYawInput");
+    resolve_once(g_fn_add_pitch_input,                 L"/Script/Engine.PlayerController:AddPitchInput");
 
-    resolve_once(g_fn_get_control_rotation, L"/Script/Engine.Controller:GetControlRotation");
-
-    resolve_once(g_default_kismet_math_library, L"/Script/Engine.Default__KismetMathLibrary");
-
-    resolve_once(g_fn_rinterp_to, L"/Script/Engine.KismetMathLibrary:RInterpTo");
-
-    resolve_once(g_fn_find_look_at_rotation, L"/Script/Engine.KismetMathLibrary:FindLookAtRotation");
-
-    resolve_once(g_fn_k2_set_actor_rotation, L"/Script/Engine.Actor:K2_SetActorRotation");
-
-    resolve_once(g_fn_add_yaw_input, L"/Script/Engine.PlayerController:AddYawInput");
-    resolve_once(g_fn_add_pitch_input, L"/Script/Engine.PlayerController:AddPitchInput");
-
-    resolve_function(g_fn_object_is_a, L"/Script/Engine.GameplayStatics:ObjectIsA", L"/Script/Engine.GameplayStatics.ObjectIsA");
-    resolve_once(g_uclass_modular_vehicle, L"/Script/ModularVehicles.ModularVehicle");
-    resolve_once(g_uclass_wd_rotary_vehicle, L"/Script/WDGame.WDRotaryVehicle");
-    resolve_once(g_uclass_wd_airplane_vehicle, L"/Script/WDGame.WDAirplaneVehicle");
-    resolve_function(g_fn_input_fire_flares, L"/Script/WDGame.WDRotaryVehicle:InputFireFlares", L"/Script/WDGame.WDRotaryVehicle.InputFireFlares");
+    resolve_function(g_fn_object_is_a,                 L"/Script/Engine.GameplayStatics:ObjectIsA", L"/Script/Engine.GameplayStatics.ObjectIsA");
+    resolve_once(g_uclass_modular_vehicle,             L"/Script/ModularVehicles.ModularVehicle");
+    resolve_once(g_uclass_wd_rotary_vehicle,           L"/Script/WDGame.WDRotaryVehicle");
+    resolve_once(g_uclass_wd_airplane_vehicle,         L"/Script/WDGame.WDAirplaneVehicle");
+    resolve_function(g_fn_input_fire_flares,           L"/Script/WDGame.WDRotaryVehicle:InputFireFlares", L"/Script/WDGame.WDRotaryVehicle.InputFireFlares");
 
     g_functions_ready = g_default_gameplay_statics && g_fn_get_player_controller &&
                         g_fn_get_player_camera_manager && g_fn_get_player_state &&
