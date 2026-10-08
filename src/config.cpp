@@ -33,8 +33,8 @@ void validate_config(Config& value)
     for (bool* b : {&e.enabled, &e.agent_name, &e.skeleton, &e.box, &e.lines, &e.health, &e.distance, &e.visible_check, &e.team, &e.loot, &e.vehicles, &e.minimap, &e.minimap_auto_range, &value.aimbot.enabled, &value.aimbot.draw_fov, &value.aimbot.visible_check, &value.aimbot.team_check, &value.aimbot.silent_aim, &value.aimbot.magic_bullet, &value.prediction.enabled, &value.prediction.bullet_drop, &value.prediction.velocity_lead, &value.prediction.show_line, &value.anti_sam.auto_flare, &value.anti_sam.flare_warning, &value.mortar.mortar_aim})
         boolean(*b);
     e.box_style = std::clamp(e.box_style, 0, 1);
-    limit(e.player_distance, 1, 2000, 2000);
-    limit(e.skeleton_distance, 1, 500, 250);
+    limit(e.player_distance, 1, 2000, 750);
+    limit(e.skeleton_distance, 1, 500, 200);
     limit(e.loot_distance, 1, 2000, 80);
     limit(e.vehicle_distance, 1, 5000, 2000);
     limit(e.minimap_range, 25, 5000, 300);

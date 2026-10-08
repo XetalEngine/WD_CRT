@@ -184,7 +184,7 @@ void menu::draw()
         active_slider = nullptr;
     rect(x, y, width, height, color(config.colors.menu_fill));
     rect(x, y, width, height, color(config.colors.menu_accent), false);
-    text(x + 18, y + 9, "WD", color(config.colors.menu_accent), 17);
+    text(x + 18, y + 9, "X-Engine", color(config.colors.menu_accent), 17);
     text(x + 450, y + 12, "Insert to close", muted, 12);
     const char* tabs[]{"Aim", "Players", "World", "Mortar", "Colors", "Settings"};
     for (int i = 0; i < 6; ++i)

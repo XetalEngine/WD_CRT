@@ -36,15 +36,15 @@ namespace
 
     DWORD WINAPI run(void*)
     {
-        log("startup");
+       // log("startup");
         HMODULE self;
         GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCSTR>(&run), &self);
         if (!overlay::initialize(FindWindowA("GLFW30", "Echo Overlay")))
         {
-            log("overlay initialization failed");
+            //log("overlay initialization failed");
             return 1;
         }
-        log("overlay ready: %dx%d", screen_width, screen_height);
+        //log("overlay ready: %dx%d", screen_width, screen_height);
         offsets::setup();
         load_config();
         game::Snapshot displayed;
@@ -52,11 +52,11 @@ namespace
         HANDLE updater = CreateThread(nullptr, 0, update, nullptr, 0, nullptr);
         if (!updater)
         {
-            log("update thread creation failed");
+           // log("update thread creation failed");
             overlay::shutdown();
             return 2;
         }
-        log("update and render threads running");
+       // log("update and render threads running");
         for (;;)
         {
             menu::update();
@@ -90,7 +90,7 @@ namespace
                 break;
         }
         overlay::shutdown();
-        log("stopped");
+        //log("stopped");
         return 0;
     }
 } // namespace
@@ -99,11 +99,11 @@ BOOL WINAPI DllMain(HMODULE, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
-        log("process attach");
+       // log("process attach");
         HANDLE thread = CreateThread(nullptr, 0, run, nullptr, 0, nullptr);
         if (!thread)
         {
-            log("startup thread creation failed");
+           // log("startup thread creation failed");
             return FALSE;
         }
         CloseHandle(thread);

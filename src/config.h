@@ -45,8 +45,8 @@ struct Config
         bool distance = true;
         bool visible_check = true;
         bool team = false;
-        float player_distance = 500.f;
-        float skeleton_distance = 250.f;
+        float player_distance = 750.f;
+        float skeleton_distance = 200.f;
         float not_visible_color[4] = {1, 0, 0, 200.f / 255};
         float visible_color[4] = {0, 1, 0, 1};
         bool loot = true;
