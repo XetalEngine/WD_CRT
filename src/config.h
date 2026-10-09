@@ -136,7 +136,7 @@ struct Config
         float tracer_end_color[4] = {1.f, 0.15f, 0.65f, 1.f};
         float explosive_color[4] = {1.f, 0.35f, 0.1f, 1.f};
         float bag_color[4] = {1.f, 0.78f, 0.35f, 1.f};
-        int player_text = 0; // both above, both below, distance, name, off
+        int player_text = 0; // 0: both above, 1: retired, 2: distance, 3: name, 4: off
     } extra;
 
     // Version 4: radar content is independent of world ESP.

@@ -923,7 +923,7 @@ namespace game
                 if (extra_bones)
                     --nearest_bone_budget;
                 const bool full_skeleton = drawn_skeleton || extra_bones;
-                wdgs::snapshot::PopulatePlayerBones(actor, player, full_skeleton, settings.esp.box || settings.esp.health || (settings.extra.player_text == 1 && (settings.esp.agent_name || settings.esp.distance)));
+                wdgs::snapshot::PopulatePlayerBones(actor, player, full_skeleton, settings.esp.box || settings.esp.health);
             }
             if (needs_target_data)
             {

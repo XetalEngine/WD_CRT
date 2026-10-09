@@ -106,7 +106,7 @@ namespace
         label.actor = actor;
         label.name = name;
         strcpy_s(label.text, kind == 1 ? "GRENADE" : kind == 2 ? "PLACED EXPLOSIVE"
-                                                 : kind == 4   ? "DEATH BAG"
+                                                 : kind == 4   ? "d-bag"
                                                                : "CONTAINER");
         if (kind <= 2)
         {

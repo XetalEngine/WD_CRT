@@ -95,7 +95,7 @@ int benchmark_crowd(bool effects, bool camera_pan)
                     marker.fuse_left = 2;
                     marker.fuse_total = 5;
                     marker.nearby = marker.bag ? 1 : 0;
-                    strcpy_s(marker.label, marker.bag ? "DEATH BAG" : "GRENADE");
+                    strcpy_s(marker.label, marker.bag ? "d-bag" : "GRENADE");
                     scene.markers.push_back(marker);
                 }
                 for (int i = 0; i < 24; ++i)

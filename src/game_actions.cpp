@@ -25,6 +25,7 @@ namespace
     FNameValue manticore{};
     void *session_class = nullptr, *state_class = nullptr, *reserve_fn = nullptr, *commit_fn = nullptr;
     void *manager_class = nullptr, *tool_class = nullptr, *decal_class = nullptr;
+    void *actor_class = nullptr, *scene_class = nullptr, *trace_class = nullptr;
     void *component_fn = nullptr, *eyes_fn = nullptr, *location_fn = nullptr, *trace_fn = nullptr;
     void *get_rotation_fn = nullptr, *set_rotation_fn = nullptr;
     struct Spot
@@ -35,6 +36,16 @@ namespace
         unsigned seen = 0;
     } spots[24];
     unsigned pass = 0;
+
+    void build_state(const char* state)
+    {
+        static const char* previous = nullptr;
+        if (state != previous)
+        {
+            previous = state;
+            log("Build X: %s", state);
+        }
+    }
 
     bool live(std::uintptr_t p)
     {
@@ -110,10 +121,31 @@ namespace
             find(manager_class, L"/Script/BuildablesRuntime.WDPawnBuildableManager");
             find(tool_class, L"/Script/BuildablesRuntime.WDItemExtension_BuildBuildable");
             find(decal_class, L"/Script/Engine.DecalComponent");
-            find(component_fn, L"/Script/Engine.Actor:GetComponentByClass");
-            find(eyes_fn, L"/Script/Engine.Actor:GetActorEyesViewPoint");
-            find(location_fn, L"/Script/Engine.SceneComponent:K2_SetWorldLocation");
-            find(trace_fn, L"/Script/Engine.KismetSystemLibrary:LineTraceSingle");
+            find(actor_class, L"/Script/Engine.Actor");
+            find(scene_class, L"/Script/Engine.SceneComponent");
+            find(trace_class, L"/Script/Engine.KismetSystemLibrary");
+            const auto function = [](void*& fn, void* owner, const wchar_t* path, const wchar_t* name)
+            {
+                if (fn || !engine::is_live_object(owner))
+                    return;
+                // SPOT checks ownership and falls back when full Engine paths fail.
+                // Resolve relative to the owning class; never accept a bare global match.
+                void* found = engine::static_find_object(nullptr, owner, name);
+                for (wchar_t separator : {L':', L'.'})
+                {
+                    if (found)
+                        break;
+                    wchar_t full[160];
+                    swprintf_s(full, L"%ls%lc%ls", path, separator, name);
+                    found = engine::static_find_object(nullptr, nullptr, full);
+                }
+                if (engine::is_live_object(found) && read<std::uintptr_t>(reinterpret_cast<std::uintptr_t>(found) + offsets::UObject::OuterPrivate) == reinterpret_cast<std::uintptr_t>(owner))
+                    fn = found;
+            };
+            function(component_fn, actor_class, L"/Script/Engine.Actor", L"GetComponentByClass");
+            function(eyes_fn, actor_class, L"/Script/Engine.Actor", L"GetActorEyesViewPoint");
+            function(location_fn, scene_class, L"/Script/Engine.SceneComponent", L"K2_SetWorldLocation");
+            function(trace_fn, trace_class, L"/Script/Engine.KismetSystemLibrary", L"LineTraceSingle");
         }
         if (input.afk)
         {
@@ -193,9 +225,10 @@ namespace
 
     void build(std::uintptr_t pawn)
     {
-        if (!component_fn || !eyes_fn || !location_fn || !trace_fn || !live(pawn))
+        if (!component_fn || !eyes_fn || !location_fn || !trace_fn || !manager_class || !tool_class || !decal_class || !live(pawn))
         {
             restore();
+            build_state("engine functions unavailable");
             return;
         }
         const auto inventory = read<std::uintptr_t>(pawn + 0x748);
@@ -203,6 +236,7 @@ namespace
         if (!hammer(item))
         {
             restore();
+            build_state("no hammer in hand");
             return;
         }
         const auto manager = component(pawn, manager_class);
@@ -210,6 +244,7 @@ namespace
         if (!manager || !read_sparse(manager + 0xE8, 0x90, map))
         {
             restore();
+            build_state(manager ? "X map unreadable" : "build manager unavailable");
             return;
         }
         struct
@@ -218,9 +253,10 @@ namespace
             FRotator rotation;
             unsigned char pad[64];
         } view{};
-        if (!call(pawn, eyes_fn, &view) || !visual_math::finite(view.eye) || !std::isfinite(view.rotation.Pitch) || !std::isfinite(view.rotation.Yaw))
+        if (!call(pawn, eyes_fn, &view) || !visual_math::finite(view.eye) || (view.eye.X == 0 && view.eye.Y == 0 && view.eye.Z == 0) || !std::isfinite(view.rotation.Pitch) || !std::isfinite(view.rotation.Yaw))
         {
             restore();
+            build_state("view point unavailable");
             return;
         }
         constexpr double rad = 0.017453292519943295;
@@ -229,6 +265,7 @@ namespace
         ++pass;
         bool traced = false;
         double hit = -1;
+        bool moved = false;
         for (int i = 0; i < map.count; ++i)
         {
             if (!allocated(map, i))
@@ -277,15 +314,18 @@ namespace
             const double distance = hit > 0 ? std::max(hit - 1, radius + 5) : std::min(std::max(away, radius + 20), 150.0);
             const auto target = view.eye + direction * distance;
             if (target.Distance(current) <= 0.5 || move(decal, target))
+            {
                 found->last = target;
+                moved = true;
+            }
         }
         for (auto& spot : spots)
             if (spot.decal && spot.seen != pass)
             {
-                if (same(spot) && read<FVector>(spot.decal + 0x230).Distance(spot.last) <= 2)
-                    move(spot.decal, spot.original);
+                // SPOT forgets removed X entries; the game may have consumed them.
                 spot = {};
             }
+        build_state(moved ? "X follows hammer aim" : "no usable X in range");
     }
 
     void service(const Request& input)
@@ -301,6 +341,8 @@ namespace
         if (!live(world))
         {
             restore();
+            if (input.build)
+                build_state("no live world");
             return;
         }
         if (world != active_world)
@@ -315,12 +357,16 @@ namespace
         if (!extras::derives(state, session_class))
         {
             restore();
+            if (input.build)
+                build_state("no live match");
             return;
         }
         const auto instance = read<std::uintptr_t>(world + offsets::World::OwningGameInstance);
         if (!live(instance))
         {
             restore();
+            if (input.build)
+                build_state("no game instance");
             return;
         }
         const auto players = read<TArray<std::uintptr_t>>(instance + offsets::UGameInstance::LocalPlayers);
@@ -328,12 +374,16 @@ namespace
         if (!players.TryGet(0, player, 8) || !live(player))
         {
             restore();
+            if (input.build)
+                build_state("no local player");
             return;
         }
         const auto controller = read<std::uintptr_t>(player + offsets::UPlayer::PlayerController);
         if (!live(controller))
         {
             restore();
+            if (input.build)
+                build_state("no local controller");
             return;
         }
         const auto ps = read<std::uintptr_t>(controller + 0x2C0);
@@ -374,6 +424,8 @@ namespace
         if (!live(pawn) || !live(ps) || read<std::uintptr_t>(ps + offsets::APlayerState::PawnPrivate) != pawn || !live(read<std::uintptr_t>(pawn + offsets::ACharacter::Mesh)))
         {
             restore();
+            if (input.build)
+                build_state("no possessed character");
             return;
         }
         if (pawn != active_pawn)
@@ -387,7 +439,11 @@ namespace
         if (input.build && !input.menu && !seated)
             build(pawn);
         else
+        {
             restore();
+            if (input.build)
+                build_state(input.menu ? "paused while menu is open" : "requires being on foot");
+        }
         if (!input.afk || input.menu || seated || input.aiming)
         {
             next_afk = 0;

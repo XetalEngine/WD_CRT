@@ -1,14 +1,16 @@
-Health-bar head-to-feet alignment
+Silent Build X comparison and d-bag label
 
-Cause: rendering already shared the box's head/root bounds, but the updater requested the mesh root only for boxes or below-feet labels. With boxes off, health bars could fall back to a distance estimate ending at the actor origin near the belly.
+Compared against Ilu/spot/Game/BuildX.cpp and SDK/ProcessEventFunctions.cpp. The existing eye-ray, surface-distance, map-stride and decal offsets match the reference. SPOT uses owner-checked fallback function lookup; the rewrite previously used only one full path. Build X now resolves relative to the owning class and tries colon/dot full paths, rejecting functions owned by another class. This fixes a lookup weakness; its role in the reported live-game failure has not been confirmed.
 
-Fix: health bars now enable bone collection and request the mesh root independently of boxes, skeletons, labels and aiming. Existing shared bounds draw the full background from head to feet and fill upward from the feet according to health. No new rendering path, full-skeleton requirement, thread or API import. Existing invalid/missing-bone fallback remains.
+Removed X entries are forgotten without another move, matching SPOT. Invalid or zero eye positions stop the action. State-transition diagnostics use the existing log helper and always have the WD_xetal: Build X: prefix. No new threads, timers, per-frame window polling or engine-object scans were added. Existing game-context checks and message-callback scheduling remain.
 
-Validation: reviewed the collection and projection path, then rebuilt the Desktop DLL and ran the existing regression suite. Live gameplay was not exercised.
+Renamed the DEATH BAG world label to d-bag, including the related menu/color/HUD labels and sample scenes.
 
-Desktop release: 242176 bytes (236.5 KiB); 119 imports (unchanged).
-Regression suite: 265 checks passed, 0 failures.
-DLL SHA256: 341cd0ce36018470e33456d5b8798eea41f3bdad165dd773929a7a19a9ca0088
+Validation: rebuilt both staging and Desktop DLLs and ran their regression suites. New coverage verifies class ownership, alternate lookup paths, changed aim direction/surface distance, consumed-X handling, actual WH_GETMESSAGE callback delivery on a disposable UnrealWindow, and callback restoration. Game objects and engine entry points are synthetic in these tests; live gameplay and critical hammer hits were not exercised. If the marker still stays in place, the WD_xetal: Build X: state identifies the blocked prerequisite for the next investigation.
+
+Desktop release: 243200 bytes (237.5 KiB); 119 imports (unchanged).
+Regression suite: 269 checks passed, 0 failures.
+DLL SHA256: 0fe5182c844d5e2b9bbe87eea0e1dc90b74c26f8fd457ae5c5504d9fc24735e4
 Existing Desktop compiler-option warnings remain; no compilation errors.
 
 PASS: no snapshot displayed before first publication
@@ -22,7 +24,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 249
+Concurrent snapshot reads: 422
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -65,11 +67,10 @@ PASS: unready or destroyed object is rejected despite readable memory
 PASS: unready or destroyed UFunction is rejected
 PASS: readable non-object memory is rejected before native call
 PASS: player labels default to combined text above the head
-PASS: Backspace advances once per press and wraps all five text modes
-PASS: Backspace advances once per press and wraps all five text modes
-PASS: Backspace advances once per press and wraps all five text modes
-PASS: Backspace advances once per press and wraps all five text modes
-PASS: Backspace advances once per press and wraps all five text modes
+PASS: Backspace advances once per press and wraps all four text modes
+PASS: Backspace advances once per press and wraps all four text modes
+PASS: Backspace advances once per press and wraps all four text modes
+PASS: Backspace advances once per press and wraps all four text modes
 PASS: Up increases aim FOV once per press
 PASS: Down decreases aim FOV
 PASS: FOV hotkey respects upper limit
@@ -78,7 +79,7 @@ PASS: opposite FOV hotkeys together do not change the setting
 PASS: requested feature defaults
 PASS: shared settings round trip with new feature fields
 PASS: shared settings preserve radar filters and 400 pixel size
-PASS: version 3 shared settings migrate radar size and former vehicle visibility
+PASS: version 3 shared settings migrate radar options and retired feet labels
 PASS: radar vehicle types can be selected independently
 PASS: automatic radar collection covers its supported range
 PASS: manual radar collection respects selected range
@@ -99,15 +100,22 @@ PASS: expired tracers clear without new shots
 PASS: reused projectile slot starts a separate trail
 PASS: no recoil changes only verified fields
 PASS: disabling no recoil restores original values
-PASS: Silent Build X uses the traced surface, not a fixed point behind the wall
+PASS: Build X rejects a resolved function belonging to the wrong class
+PASS: Build X resolves owned and alternate paths and moves the X to the traced hammer surface
+PASS: Build X follows a new aim direction and surface distance
 PASS: Silent Build X restores markers when disabled
-PASS: Build X restores a surviving decal removed from the manager map
+PASS: Build X forgets a consumed map entry without moving it again, matching SPOT
 PASS: leaving the world discards Build X pointers without touching old objects
 PASS: auto join can reserve on deploy screen and respects its retry interval
 PASS: auto join commits after reservation
 PASS: auto join stops requesting once already on Manticore
 PASS: anti AFK does not turn immediately when enabled
 PASS: anti AFK acts only after its interval
+PASS: create disposable Unreal window for action callback
+PASS: Build X publication waits for the window message callback
+PASS: real message hook delivers Build X and moves the marker
+PASS: message callback follows a changed hammer aim point
+PASS: callback cleanup restores the X before detaching
 PASS: render camera advances without changing or waiting for entity publication
 PASS: late camera sample never calls native ProcessEvent
 PASS: fixed world geometry follows a rightward camera turn immediately
@@ -150,7 +158,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.380 ms
+Busy-GPU stage 1 submission: 0.246 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -159,7 +167,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.235 ms
+Busy-GPU stage 2 submission: 0.282 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -168,7 +176,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.306 ms
+Busy-GPU stage 3 submission: 0.239 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -237,8 +245,6 @@ PASS: begin player label mode
 PASS: capture player label mode
 PASS: begin player label mode
 PASS: capture player label mode
-PASS: begin player label mode
-PASS: capture player label mode
 PASS: begin late camera projection frame
 PASS: camera turn renders from the same frozen entity snapshot
 PASS: begin late camera projection frame
@@ -271,7 +277,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 1.776 ms CPU average, 44.443 ms max; 15.830 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.608 ms CPU average, 15.369 ms max; 35.097 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -285,4 +291,4 @@ PASS: external presentation preserves pixels and alpha
 
 FullName                          Length
 --------                          ------
-C:\xampp\htdocs\downloads\dll.dll 242176
+C:\xampp\htdocs\downloads\dll.dll 243200

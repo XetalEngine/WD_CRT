@@ -104,7 +104,7 @@ namespace
             outlined_line(screen_width * 0.5f, static_cast<float>(screen_height), screen.x, screen.y, c);
         if (e.box)
             box(left, top, width, height, c);
-        if (e.skeleton && data.has_bones && !data.is_in_vehicle && data.distance <= e.skeleton_distance)
+        if (e.skeleton && std::isfinite(data.health) && data.health > 0 && data.has_bones && !data.is_in_vehicle && data.distance <= e.skeleton_distance)
         {
             const float ratio = data.distance / std::max(e.skeleton_distance, 1.f);
             Color skeleton = targeted ? c : player_color(data, palette.skeleton_visible, palette.skeleton_hidden);
@@ -135,9 +135,8 @@ namespace
         {
             wchar_t label[32];
             const wchar_t* player_name = data.player_name[0] ? data.player_name : L"Player";
-            const float label_x = mode == 1 && root.valid ? root.x : head.valid ? head.x
-                                                                                : center;
-            const float label_y = mode == 1 ? (root.valid ? root.y : bottom) + 5 : (head.valid ? head.y : top) - 21;
+            const float label_x = head.valid ? head.x : center;
+            const float label_y = (head.valid ? head.y : top) - 21;
             if (show_distance)
                 swprintf_s(label, show_name ? L"[%.0fm] " : L"[%.0fm]", data.distance);
             if (show_name && show_distance)
@@ -309,7 +308,7 @@ namespace
         if (config.extra.explosives)
             row("Explosives");
         if (config.extra.death_bags)
-            row("Death bags");
+            row("d-bag");
         if (config.extra.tracers)
             row("Tracers");
         if (config.extra.build_x)

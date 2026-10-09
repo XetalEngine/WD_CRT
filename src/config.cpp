@@ -112,6 +112,8 @@ void validate_config(Config& value)
     x.tracer_style = std::clamp(x.tracer_style, 0, 3);
     x.mortar_mode = std::clamp(x.mortar_mode, 0, 1);
     x.player_text = std::clamp(x.player_text, 0, 4);
+    if (x.player_text == 1)
+        x.player_text = 0;
     limit(x.explosive_range, 10, 1000, 200);
     limit(x.bag_range, 10, 1000, 150);
     limit(x.tracer_lifetime, 0.25f, 5, 2);

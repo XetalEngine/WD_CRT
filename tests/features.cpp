@@ -32,15 +32,25 @@ namespace
         }
     };
     Object session, state_type, manager_type, tool_type, decal_type, explosive_type, container_type;
+    Object actor_type, scene_type, trace_type;
     Object component_fn, eyes_fn, location_fn, trace_fn, reserve_fn, commit_fn, string_fn, library, get_rot_fn, set_rot_fn;
     std::uintptr_t pawn_address, item_address, manager_address, tool_address;
     int moved, traces, reserved, committed, rotated, event_calls;
+    FVector test_eye{100, 200, 300};
+    FRotator test_rotation{};
+    float hit_fraction = 0.4f;
 
-    void* __fastcall find_object(void*, void*, const FString* name, bool)
+    void* __fastcall find_object(void*, void* outer, const FString* name, bool)
     {
         const auto s = name->ToWString(200);
         Object* out = nullptr;
-        if (s.find(L"WDGameStateSession") != s.npos)
+        if (s == L"/Script/Engine.Actor")
+            out = &actor_type;
+        else if (s == L"/Script/Engine.SceneComponent")
+            out = &scene_type;
+        else if (s == L"/Script/Engine.KismetSystemLibrary")
+            out = &trace_type;
+        else if (s.find(L"WDGameStateSession") != s.npos)
             out = &session;
         else if (s.find(L"Server_ReserveFaction") != s.npos)
             out = &reserve_fn;
@@ -55,13 +65,13 @@ namespace
         else if (s.find(L"DecalComponent") != s.npos)
             out = &decal_type;
         else if (s.find(L"GetComponentByClass") != s.npos)
-            out = &component_fn;
+            out = outer == actor_type.bytes ? &component_fn : nullptr;
         else if (s.find(L"GetActorEyesViewPoint") != s.npos)
-            out = &eyes_fn;
+            out = s == L"/Script/Engine.Actor.GetActorEyesViewPoint" ? &eyes_fn : nullptr;
         else if (s.find(L"K2_SetWorldLocation") != s.npos)
-            out = &location_fn;
+            out = outer == scene_type.bytes ? &location_fn : nullptr;
         else if (s.find(L"LineTraceSingle") != s.npos)
-            out = &trace_fn;
+            out = s == L"/Script/Engine.KismetSystemLibrary:LineTraceSingle" ? &trace_fn : nullptr;
         else if (s.find(L"Conv_StringToName") != s.npos)
             out = &string_fn;
         else if (s.find(L"Default__KismetStringLibrary") != s.npos)
@@ -90,14 +100,13 @@ namespace
         }
         else if (function == eyes_fn.bytes)
         {
-            const FVector eye{100, 200, 300};
-            memcpy(bytes, &eye, sizeof(eye));
+            memcpy(bytes, &test_eye, sizeof(test_eye));
+            memcpy(bytes + sizeof(test_eye), &test_rotation, sizeof(test_rotation));
         }
         else if (function == trace_fn.bytes)
         {
-            const float fraction = 0.4f;
-            memcpy(bytes + 0x5C, &fraction, 4);
-            bytes[0x180] = 1;
+            memcpy(bytes + 0x5C, &hit_fraction, 4);
+            bytes[0x180] = hit_fraction >= 0;
             ++traces;
         }
         else if (function == location_fn.bytes)
@@ -134,13 +143,13 @@ int test_features()
     config = {};
     menu::test_backspace(false);
     check(config.extra.player_text == 0, "player labels default to combined text above the head");
-    for (int mode = 1; mode <= 5; ++mode)
+    for (int mode = 1; mode <= 4; ++mode)
     {
         menu::test_backspace(true);
         for (int held = 0; held < 100; ++held)
             menu::test_backspace(true);
-        const int expected = mode % 5;
-        check(config.extra.player_text == expected && config.esp.agent_name == (expected == 0 || expected == 1 || expected == 3) && config.esp.distance == (expected <= 2), "Backspace advances once per press and wraps all five text modes");
+        const int expected = mode == 4 ? 0 : mode + 1;
+        check(config.extra.player_text == expected && config.esp.agent_name == (expected == 0 || expected == 3) && config.esp.distance == (expected == 0 || expected == 2), "Backspace advances once per press and wraps all four text modes");
         menu::test_backspace(false);
     }
     config = previous_config;
@@ -181,6 +190,7 @@ int test_features()
     old_settings.esp.minimap_size = 200;
     old_settings.esp.vehicles = false;
     old_settings.extra.build_x = true;
+    old_settings.extra.player_text = 1;
     unsigned char old_bytes[4 + offsetof(Config, radar)]{3};
     memcpy(old_bytes + 4, &old_settings, offsetof(Config, radar));
     std::string legacy = "XENGINE3:";
@@ -195,7 +205,7 @@ int test_features()
     char checksum[9];
     snprintf(checksum, sizeof(checksum), "%08X", hash);
     legacy += checksum;
-    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.extra.build_x && decoded.esp.minimap_size == 400 && !decoded.radar.helicopters && !decoded.radar.ground && !decoded.radar.items, "version 3 shared settings migrate radar size and former vehicle visibility");
+    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.extra.build_x && decoded.extra.player_text == 0 && decoded.esp.minimap_size == 400 && !decoded.radar.helicopters && !decoded.radar.ground && !decoded.radar.items, "version 3 shared settings migrate radar options and retired feet labels");
     using wdgs::actors::Kind;
     check(radar_vehicle_visible(settings, Kind::boat) && radar_vehicle_visible(settings, Kind::buggy) && !radar_vehicle_visible(settings, Kind::heli), "radar vehicle types can be selected independently");
     check(radar_scan_range(settings) == 5000, "automatic radar collection covers its supported range");
@@ -305,6 +315,10 @@ int test_features()
     manager.put(offsets::UObject::ClassPrivate, manager_type.addr());
     tool.put(offsets::UObject::ClassPrivate, tool_type.addr());
     decal.put(offsets::UObject::ClassPrivate, decal_type.addr());
+    component_fn.put(offsets::UObject::OuterPrivate, actor_type.addr());
+    eyes_fn.put(offsets::UObject::OuterPrivate, actor_type.addr());
+    location_fn.put(offsets::UObject::OuterPrivate, scene_type.addr());
+    trace_fn.put(offsets::UObject::OuterPrivate, actor_type.addr());
     world.put(offsets::World::GameState, state.addr());
     world.put(offsets::World::OwningGameInstance, instance.addr());
     auto local_address = local.addr();
@@ -338,17 +352,30 @@ int test_features()
     decal.put(0x160, 25.0);
     settings = {};
     settings.extra.build_x = true;
+    game_actions::test_service(settings, 1);
+    check(moved == 0 && traces == 0, "Build X rejects a resolved function belonging to the wrong class");
+    trace_fn.put(offsets::UObject::OuterPrivate, trace_type.addr());
     game_actions::test_service(settings, 6000);
     auto position = read<FVector>(decal.addr() + 0x230);
-    check(moved == 1 && traces == 1 && std::fabs(position.X - 199) < 0.01 && position.Y == 200, "Silent Build X uses the traced surface, not a fixed point behind the wall");
+    check(moved == 1 && traces == 1 && std::fabs(position.X - 199) < 0.01 && position.Y == 200, "Build X resolves owned and alternate paths and moves the X to the traced hammer surface");
+    test_rotation.Yaw = 90;
+    hit_fraction = 0.6f;
+    game_actions::test_service(settings, 6000);
+    position = read<FVector>(decal.addr() + 0x230);
+    check(std::fabs(position.X - 100) < 0.01 && std::fabs(position.Y - 349) < 0.01, "Build X follows a new aim direction and surface distance");
+    test_rotation = {};
+    hit_fraction = 0.4f;
     settings.extra.build_x = false;
     game_actions::test_service(settings, 6001);
     check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "Silent Build X restores markers when disabled");
     settings.extra.build_x = true;
     game_actions::test_service(settings, 6002);
+    const auto consumed = read<FVector>(decal.addr() + 0x230);
+    const int before_consumed = moved;
     manager.put(0xF8, 0u);
     game_actions::test_service(settings, 6003);
-    check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "Build X restores a surviving decal removed from the manager map");
+    check(moved == before_consumed && read<FVector>(decal.addr() + 0x230).Distance(consumed) < 0.01, "Build X forgets a consumed map entry without moving it again, matching SPOT");
+    decal.put(0x230, original);
     manager.put(0xF8, 1u);
     game_actions::test_service(settings, 6004);
     world_pointer = 0;
@@ -376,6 +403,51 @@ int test_features()
     check(rotated == 1, "anti AFK acts only after its interval");
     settings = {};
     game_actions::test_service(settings, 21004);
+
+    // Exercise the actual Windows callback, not just its service function.
+    WNDCLASSW action_class{};
+    action_class.lpfnWndProc = DefWindowProcW;
+    action_class.hInstance = GetModuleHandleW(nullptr);
+    action_class.lpszClassName = L"UnrealWindow";
+    const ATOM action_atom = RegisterClassW(&action_class);
+    const HWND action_window = action_atom ? CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, action_class.lpszClassName, L"Build X callback test", WS_POPUP | WS_VISIBLE, -100, -100, 1, 1, nullptr, nullptr, action_class.hInstance, nullptr) : nullptr;
+    check(action_window != nullptr, "create disposable Unreal window for action callback");
+    if (action_window)
+    {
+        const auto pump = []()
+        {
+            MSG message{};
+            for (int i = 0; i < 128 && PeekMessageA(&message, nullptr, 0, 0, PM_REMOVE); ++i)
+                DispatchMessageA(&message);
+        };
+        decal.put(0x230, original);
+        settings.extra.build_x = true;
+        settings.aimbot.enabled = false;
+        frame_ticks = 30000;
+        const int before_callback = moved;
+        game_actions::update(settings, false);
+        check(moved == before_callback, "Build X publication waits for the window message callback");
+        pump();
+        position = read<FVector>(decal.addr() + 0x230);
+        check(moved == before_callback + 1 && std::fabs(position.X - 199) < 0.01 && position.Y == 200, "real message hook delivers Build X and moves the marker");
+        test_rotation.Yaw = 90;
+        hit_fraction = 0.6f;
+        frame_ticks += 16;
+        game_actions::update(settings, false);
+        pump();
+        position = read<FVector>(decal.addr() + 0x230);
+        check(std::fabs(position.X - 100) < 0.01 && std::fabs(position.Y - 349) < 0.01, "message callback follows a changed hammer aim point");
+        game_actions::stop();
+        pump();
+        check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "callback cleanup restores the X before detaching");
+        DestroyWindow(action_window);
+    }
+    if (action_atom)
+        UnregisterClassW(action_class.lpszClassName, action_class.hInstance);
+    test_rotation = {};
+    hit_fraction = 0.4f;
+    frame_ticks = old_ticks;
+    settings = {};
 
     Object camera_object;
     controller.put(offsets::APlayerController::PlayerCameraManager, camera_object.addr());
@@ -468,7 +540,7 @@ int test_effect_drawing()
     bag.bag = true;
     bag.world.Y = 1500;
     bag.nearby = 2;
-    strcpy_s(bag.label, "DEATH BAG");
+    strcpy_s(bag.label, "d-bag");
     scene.markers.push_back(bag);
     game::Snapshot::Trail trail;
     trail.count = 12;

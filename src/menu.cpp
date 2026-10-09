@@ -22,14 +22,17 @@ namespace
     void set_player_text(int mode)
     {
         config.extra.player_text = mode;
-        config.esp.agent_name = mode == 0 || mode == 1 || mode == 3;
-        config.esp.distance = mode <= 2;
+        config.esp.agent_name = mode == 0 || mode == 3;
+        config.esp.distance = mode == 0 || mode == 2;
     }
 
     void update_backspace(bool down)
     {
         if (down && !old_backspace && !binding)
-            set_player_text((config.extra.player_text + 1) % 5);
+        {
+            const int next = (config.extra.player_text + 1) % 5;
+            set_player_text(next == 1 ? 2 : next);
+        }
         old_backspace = down;
     }
 
@@ -236,7 +239,7 @@ void menu::draw()
     auto& e = config.esp;
     auto& a = config.aimbot;
     const char* bones[]{"Head", "Neck", "Chest", "Pelvis", "Nearest"};
-    const char* labels[]{"Both above", "Both below", "Distance", "Name", "Off"};
+    const char* labels[]{"Both above", "Distance", "Name", "Off"};
     const char* modes[]{"Distance", "Crosshair", "Health"};
     const char* boxes[]{"Corners", "Full"};
     switch (tab)
@@ -274,7 +277,7 @@ void menu::draw()
     case 1:
         toggle(0, 0, "Player ESP", e.enabled, "Shows player overlays using the options below.\nMini Radar has its own visibility switches.");
         toggle(0, 1, "Names", e.agent_name, "Includes player names in the selected text layout.");
-        toggle(0, 2, "Skeleton", e.skeleton, "Draws player bones within the skeleton range.");
+        toggle(0, 2, "Skeleton", e.skeleton, "Draws bones for living players within skeleton range.");
         toggle(0, 3, "Boxes", e.box, "Draws a box around each player within player range.");
         choice(0, 4, "Box style", e.box_style, boxes, 2, "Switches between corner boxes and full rectangles.");
         toggle(0, 5, "Snaplines", e.lines, "Draws lines from the bottom of the screen to players.");
@@ -285,10 +288,12 @@ void menu::draw()
         number(1, 4, "Player range (m)", e.player_distance, 50, 1, 2000, "Maximum distance for player overlays in the world.\nDoes not limit the mini radar.");
         number(1, 5, "Skeleton range (m)", e.skeleton_distance, 25, 1, 500, "Maximum distance for drawing player skeletons.");
         {
-            int mode = config.extra.player_text;
-            choice(1, 7, "Player text", mode, labels, 5, "Cycles combined labels above or below, distance only,\nname only, or no text. Backspace also cycles this.");
-            if (mode != config.extra.player_text)
-                set_player_text(mode);
+            // Keep saved mode IDs stable while omitting the retired feet mode.
+            int mode = std::max(0, config.extra.player_text - 1);
+            choice(1, 7, "Player text", mode, labels, 4, "Cycles combined labels, distance only, name only,\nor no text. Labels stay above the head.");
+            const int stored_mode = mode == 0 ? 0 : mode + 1;
+            if (stored_mode != config.extra.player_text)
+                set_player_text(stored_mode);
         }
         break;
     case 2:
@@ -298,7 +303,7 @@ void menu::draw()
         number(0, 4, "Item range (m)", e.loot_distance, 10, 1, 2000, "Maximum distance for dropped-item labels.");
         toggle(0, 5, "Explosives", config.extra.explosives, "Shows explosive labels and remaining fuse time\nwhen a timed grenade provides it.");
         number(0, 6, "Explosive range", config.extra.explosive_range, 25, 10, 1000, "Maximum distance for world explosive labels.");
-        toggle(0, 7, "Death bag info", config.extra.death_bags, "Shows bag/container labels and nearby looter counts.");
+        toggle(0, 7, "d-bag info", config.extra.death_bags, "Shows bag/container labels and nearby looter counts.");
         number(0, 8, "Bag range (m)", config.extra.bag_range, 25, 10, 1000, "Maximum distance for bag and container labels.");
         break;
     case 3:
@@ -369,7 +374,7 @@ void menu::draw()
             float* value;
         };
         Entry players[]{{"Visible box", e.visible_color}, {"Hidden box", e.not_visible_color}, {"Team", c.team}, {"Dead", c.dead}, {"Selected", c.selected}, {"Visible bones", c.skeleton_visible}, {"Hidden bones", c.skeleton_hidden}, {"Visible text", c.name_visible}, {"Hidden text", c.name_hidden}, {"Full health", c.health_full}, {"Low health", c.health_low}};
-        Entry world[]{{"Vehicles", e.vehicle_color}, {"Items", e.loot_color}, {"SAM vehicles", c.sam}, {"Explosives", config.extra.explosive_color}, {"Death bags", config.extra.bag_color}};
+        Entry world[]{{"Vehicles", e.vehicle_color}, {"Items", e.loot_color}, {"SAM vehicles", c.sam}, {"Explosives", config.extra.explosive_color}, {"d-bag", config.extra.bag_color}};
         Entry effects[]{{"Mortar", c.mortar}, {"Prediction", c.prediction}, {"Aim FOV", c.fov}, {"SAM warning", c.warning}, {"Box shading", c.box_fill}, {"Label shading", c.label_fill}, {"Line glow", c.glow}, {"Tracer start", config.extra.tracer_color}, {"Tracer end", config.extra.tracer_end_color}};
         Entry radar[]{{"Background", c.radar_fill}, {"Grid", c.radar_grid}, {"Border", c.radar_border}, {"Local marker", c.radar_local}};
         Entry menu[]{{"Accent", c.menu_accent}, {"Background", c.menu_fill}, {"Labels", c.menu_text}, {"Values", c.menu_value}};

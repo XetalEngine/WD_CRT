@@ -386,7 +386,7 @@ int main(int argc, char** argv)
     overlay::end();
     check(overlay::capture(L"build/scene.bmp"), "feature drawing with sample data");
     check(pixel(L"build/scene.bmp", 500, 24, 0, 0, 0, 0) && pixel(L"build/scene.bmp", 688, 212, 255, 255, 255, 255), "round radar has transparent corners and a top right center");
-    for (int mode = 0; mode < 5; ++mode)
+    for (int mode : {0, 2, 3, 4})
     {
         config.extra.player_text = mode;
         check(begin_frame(), "begin player label mode");
