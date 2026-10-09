@@ -560,8 +560,8 @@ namespace
             lower.reserve(wide.size());
             for (wchar_t c : wide)
                 lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-            muzzle = muzzle || lower == "muzzleflash_01_socket";
-            barrel = barrel || lower == "turretbarrel_01_attach";
+            muzzle = muzzle || lower == xor_text("muzzleflash_01_socket");
+            barrel = barrel || lower == xor_text("turretbarrel_01_attach");
             engine_funcs::release_string(text);
         }
         return muzzle && barrel;
@@ -1020,7 +1020,7 @@ bool wdgs::mortar_aim::try_read(std::uintptr_t pawn, std::uintptr_t camera_manag
                 engine_funcs::release_string(name);
             }
             if (!output.dbg_comp_name[s][0])
-                std::snprintf(output.dbg_comp_name[s], sizeof(output.dbg_comp_name[s]), "component_%d", s);
+                std::snprintf(output.dbg_comp_name[s], sizeof(output.dbg_comp_name[s]), xor_text("component_%d"), s);
         };
 
         if (is_valid_ptr(reinterpret_cast<void*>(wroot)))
@@ -1160,12 +1160,12 @@ bool wdgs::mortar_aim::try_read(std::uintptr_t pawn, std::uintptr_t camera_manag
                     for (std::size_t k = 0; k < sizeof(lower) - 1 && output.dbg_socket_name[s][k]; ++k)
                         lower[k] = static_cast<char>(std::tolower(static_cast<unsigned char>(output.dbg_socket_name[s][k])));
                     const bool exact_muzzle_socket =
-                        std::strcmp(lower, "muzzleflash_01_socket") == 0;
+                        std::strcmp(lower, xor_text("muzzleflash_01_socket")) == 0;
                     const bool exact_barrel_attach_socket =
-                        std::strcmp(lower, "turretbarrel_01_attach") == 0;
-                    const bool named = std::strstr(lower, "muzzle") ||
-                                       std::strstr(lower, "barrel") || std::strstr(lower, "projectile") ||
-                                       std::strstr(lower, "exit");
+                        std::strcmp(lower, xor_text("turretbarrel_01_attach")) == 0;
+                    const bool named = std::strstr(lower, xor_text("muzzle")) ||
+                                       std::strstr(lower, xor_text("barrel")) || std::strstr(lower, xor_text("projectile")) ||
+                                       std::strstr(lower, xor_text("exit"));
                     const double dx = socket_pos.X - output.weapon_world_pos.X;
                     const double dy = socket_pos.Y - output.weapon_world_pos.Y;
                     const double dz = socket_pos.Z - output.weapon_world_pos.Z;
@@ -1395,7 +1395,7 @@ void wdgs::mortar_aim::auto_target(Snapshot& snap, const std::vector<TargetPlaye
         marker.position = snap.sph_marker_world;
         marker.actor_addr = 0;
         marker.health = 1.f;
-        wcsncpy_s(marker.name, L"SPH2 MARKER", _TRUNCATE);
+        wcsncpy_s(marker.name, xor_text(L"SPH2 MARKER"), _TRUNCATE);
         marker_targets.push_back(marker);
     }
     const auto& aim_targets = marker_only ? marker_targets : targets;

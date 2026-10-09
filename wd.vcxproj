@@ -100,6 +100,7 @@
     <ClInclude Include="src\prediction.h" />
     <ClInclude Include="src\projectile_subsystem.h" />
     <ClInclude Include="src\stdafx.h" />
+    <ClInclude Include="src\xor_text.h" />
     <ClInclude Include="src\structs.h" />
     <ClInclude Include="src\types.h" />
     <ClInclude Include="src\visuals.h" />

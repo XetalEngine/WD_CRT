@@ -80,7 +80,7 @@ bool wdgs::weapon_stats::try_read_muzzle(std::uintptr_t pawn, FVector& position)
 {
     static FNameValue s_muzzle_fname{};
     if (s_muzzle_fname.ComparisonIndex == 0)
-        s_muzzle_fname = engine_funcs::conv_string_to_name(FString(L"S_Muzzle"));
+        s_muzzle_fname = engine_funcs::conv_string_to_name(FString(xor_text(L"S_Muzzle")));
     if (s_muzzle_fname.ComparisonIndex == 0 || !is_valid_ptr(reinterpret_cast<void*>(pawn)))
         return false;
 

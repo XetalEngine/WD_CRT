@@ -11,6 +11,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include "xor_text.h"
 
 inline int screen_width = 1920;
 inline int screen_height = 1080;
@@ -20,7 +21,8 @@ inline ULONGLONG frame_ticks = 0;
 
 inline void log(const char* format, ...)
 {
-    char message[512] = "WD_xetal: ";
+    char message[512];
+    strcpy_s(message, xor_text("WD_xetal: "));
     constexpr std::size_t prefix_size = sizeof("WD_xetal: ") - 1;
     va_list args;
     va_start(args, format);

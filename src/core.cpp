@@ -41,7 +41,7 @@ namespace
         // log("startup");
         HMODULE self;
         GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCSTR>(&run), &self);
-        if (!overlay::initialize(FindWindowA("GLFW30", "Echo Overlay")))
+        if (!overlay::initialize(FindWindowA(xor_text("GLFW30"), xor_text("Echo Overlay"))))
         {
             // log("overlay initialization failed");
             return 1;

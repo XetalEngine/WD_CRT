@@ -40,26 +40,26 @@ namespace
     // helmet/customized mesh is attached. Resolve names once per mesh instead of
     // sharing a fragile process-wide index table.
     constexpr int kMaxBoneScan = 512;
-    constexpr const wchar_t* kBoneNames[BONE_COUNT] = {
-        L"head",
-        L"neck_01",
-        L"spine_03",
-        L"pelvis",
-        L"upperarm_l",
-        L"lowerarm_l",
-        L"hand_l",
-        L"upperarm_r",
-        L"lowerarm_r",
-        L"hand_r",
-        L"thigh_l",
-        L"calf_l",
-        L"foot_l",
-        L"thigh_r",
-        L"calf_r",
-        L"foot_r",
-        L"clavicle_l",
-        L"clavicle_r",
-        L"root",
+    const wchar_t* const kBoneNames[BONE_COUNT] = {
+        xor_text(L"head"),
+        xor_text(L"neck_01"),
+        xor_text(L"spine_03"),
+        xor_text(L"pelvis"),
+        xor_text(L"upperarm_l"),
+        xor_text(L"lowerarm_l"),
+        xor_text(L"hand_l"),
+        xor_text(L"upperarm_r"),
+        xor_text(L"lowerarm_r"),
+        xor_text(L"hand_r"),
+        xor_text(L"thigh_l"),
+        xor_text(L"calf_l"),
+        xor_text(L"foot_l"),
+        xor_text(L"thigh_r"),
+        xor_text(L"calf_r"),
+        xor_text(L"foot_r"),
+        xor_text(L"clavicle_l"),
+        xor_text(L"clavicle_r"),
+        xor_text(L"root"),
     };
 
     constexpr std::uint64_t kCachePruneInterval = 300;

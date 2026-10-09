@@ -83,6 +83,10 @@ Optional actions now post `WM_NULL` to the cached game window with `PostMessageW
 
 All debug output goes through the fixed-stack-buffer `log()` helper, which automatically prefixes every message with `WD_xetal: `. Messages cover startup, stop, match-context changes, Build X state changes and errors; the periodic perf report was removed.
 
+Application runtime string literals use the supplied, unchanged `xor.h` through `src/xor_text.h`. Each literal has a persistent owner, decoded once by the existing CRT startup before the DLL starts its workers. Menus, tooltips, engine names and status pointers stay valid; frame loops only read the decoded text. The small wrapper shares decode routines and adds no lazy initialization, synchronization or allocation. Status-change detection also compares text when addresses differ, so duplicated encrypted literals do not create repeated logs. The debug filter and all displayed text remain unchanged. XOR increases DLL size and is obfuscation of stored literals, not encryption of runtime memory.
+
+Run `audit_strings.py` against a built DLL to check source coverage and scan for plaintext application strings. Include paths, comments, `sizeof` literal lengths and static-assert messages are compile-time syntax. Windows import names and compiler/runtime-generated strings remain in their required metadata. Runtime-generated player names and formatted labels are not compile-time literals. The binary scan covers complete strings of four or more characters; shorter literals are covered by the source check because short byte sequences can occur coincidentally in machine code.
+
 ## Verification
 
 `tests\main.cpp` covers guarded memory access, settings persistence, prediction, menu actions, transparent pixels, fixed initialization dimensions, ordered GPU completion, two-buffer backpressure, clearing on stop and drawing to a hidden window owned by another process. Hidden-window drawing does not require focus. The tests use a temporary `HKCU\Software\WDRewriteTests` key and delete it afterward. Captures, test waits and GPU readback are excluded from the DLL.

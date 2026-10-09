@@ -85,7 +85,7 @@ namespace wdgs::anti_sam
             return std::isfinite(value.X) && std::isfinite(value.Y) && std::isfinite(value.Z);
         }
 
-        constexpr const char* kSamProjectileDataName = "DA_72mm_ProjectileData";
+        const char* const kSamProjectileDataName = xor_text("DA_72mm_ProjectileData");
 
         bool is_expected_name(FNameValue value)
         {
@@ -112,7 +112,7 @@ namespace wdgs::anti_sam
         {
             if (g_sam_name_ready)
                 return g_sam_projectile_name.ComparisonIndex != 0;
-            g_sam_projectile_name = engine_funcs::conv_string_to_name(FString(L"DA_72mm_ProjectileData"));
+            g_sam_projectile_name = engine_funcs::conv_string_to_name(FString(xor_text(L"DA_72mm_ProjectileData")));
             // A transient ProcessEvent failure can return a non-zero garbage FName.
             // Validate the decoded value before making it permanent.
             if (is_expected_name(g_sam_projectile_name))

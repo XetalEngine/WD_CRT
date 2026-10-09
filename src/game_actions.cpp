@@ -43,7 +43,7 @@ namespace
     void build_state(const char* state, bool remember = true)
     {
         static const char* previous = nullptr;
-        if (state != previous)
+        if (state != previous && (!previous || strcmp(state, previous) != 0))
         {
             previous = state;
             if (remember)
@@ -52,20 +52,20 @@ namespace
                 build_report.result = state;
                 ReleaseSRWLockExclusive(&mailbox);
             }
-            log("Build X: %s", state);
+            log(xor_text("Build X: %s"), state);
         }
     }
 
     void faction_state(const char* state)
     {
-        static const char* previous = "off";
-        if (state == previous)
+        static const char* previous = xor_text("off");
+        if (state == previous || strcmp(state, previous) == 0)
             return;
         previous = state;
         AcquireSRWLockExclusive(&mailbox);
         faction_report.result = state;
         ReleaseSRWLockExclusive(&mailbox);
-        log("Auto faction: %s", state);
+        log(xor_text("Auto faction: %s"), state);
     }
 
     bool live(std::uintptr_t p)
@@ -125,7 +125,7 @@ namespace
             if (owned(found))
                 break;
             wchar_t full[160];
-            swprintf_s(full, L"%ls%lc%ls", path, separator, name);
+            swprintf_s(full, xor_text(L"%ls%lc%ls"), path, separator, name);
             found = engine::static_find_object(nullptr, nullptr, full);
         }
         if (owned(found))
@@ -139,44 +139,44 @@ namespace
         next_resolve = input.now + 5000;
         const auto find = [](void*& fn, const wchar_t* path)
         { if (!fn) fn = engine::static_find_object(nullptr, nullptr, path); };
-        find(session_class, L"/Script/WDGame.WDGameStateSession");
+        find(session_class, xor_text(L"/Script/WDGame.WDGameStateSession"));
         if (input.join)
         {
-            find(state_class, L"/Script/WDGame.WDPlayerStateSession");
-            function(reserve_fn, state_class, L"/Script/WDGame.WDPlayerStateSession", L"Server_ReserveFaction");
-            function(commit_fn, state_class, L"/Script/WDGame.WDPlayerStateSession", L"Server_CommitFactionReservation");
+            find(state_class, xor_text(L"/Script/WDGame.WDPlayerStateSession"));
+            function(reserve_fn, state_class, xor_text(L"/Script/WDGame.WDPlayerStateSession"), xor_text(L"Server_ReserveFaction"));
+            function(commit_fn, state_class, xor_text(L"/Script/WDGame.WDPlayerStateSession"), xor_text(L"Server_CommitFactionReservation"));
             if (!manticore.ComparisonIndex)
             {
-                auto library = engine::static_find_object(nullptr, nullptr, L"/Script/Engine.Default__KismetStringLibrary");
-                auto owner = engine::static_find_object(nullptr, nullptr, L"/Script/Engine.KismetStringLibrary");
+                auto library = engine::static_find_object(nullptr, nullptr, xor_text(L"/Script/Engine.Default__KismetStringLibrary"));
+                auto owner = engine::static_find_object(nullptr, nullptr, xor_text(L"/Script/Engine.KismetStringLibrary"));
                 void* fn = nullptr;
-                function(fn, owner, L"/Script/Engine.KismetStringLibrary", L"Conv_StringToName");
+                function(fn, owner, xor_text(L"/Script/Engine.KismetStringLibrary"), xor_text(L"Conv_StringToName"));
                 struct
                 {
                     FString text;
                     FNameValue name;
-                } params{FString(L"Meta.Alignment.Faction.Charlie"), {}};
+                } params{FString(xor_text(L"Meta.Alignment.Faction.Charlie")), {}};
                 if (engine::call_process_event(library, fn, &params))
                     manticore = params.name;
             }
         }
         if (input.build)
         {
-            find(manager_class, L"/Script/BuildablesRuntime.WDPawnBuildableManager");
-            find(tool_class, L"/Script/BuildablesRuntime.WDItemExtension_BuildBuildable");
-            find(decal_class, L"/Script/Engine.DecalComponent");
-            find(actor_class, L"/Script/Engine.Actor");
-            find(scene_class, L"/Script/Engine.SceneComponent");
-            find(trace_class, L"/Script/Engine.KismetSystemLibrary");
-            function(component_fn, actor_class, L"/Script/Engine.Actor", L"GetComponentByClass");
-            function(eyes_fn, actor_class, L"/Script/Engine.Actor", L"GetActorEyesViewPoint");
-            function(location_fn, scene_class, L"/Script/Engine.SceneComponent", L"K2_SetWorldLocation");
-            function(trace_fn, trace_class, L"/Script/Engine.KismetSystemLibrary", L"LineTraceSingle");
+            find(manager_class, xor_text(L"/Script/BuildablesRuntime.WDPawnBuildableManager"));
+            find(tool_class, xor_text(L"/Script/BuildablesRuntime.WDItemExtension_BuildBuildable"));
+            find(decal_class, xor_text(L"/Script/Engine.DecalComponent"));
+            find(actor_class, xor_text(L"/Script/Engine.Actor"));
+            find(scene_class, xor_text(L"/Script/Engine.SceneComponent"));
+            find(trace_class, xor_text(L"/Script/Engine.KismetSystemLibrary"));
+            function(component_fn, actor_class, xor_text(L"/Script/Engine.Actor"), xor_text(L"GetComponentByClass"));
+            function(eyes_fn, actor_class, xor_text(L"/Script/Engine.Actor"), xor_text(L"GetActorEyesViewPoint"));
+            function(location_fn, scene_class, xor_text(L"/Script/Engine.SceneComponent"), xor_text(L"K2_SetWorldLocation"));
+            function(trace_fn, trace_class, xor_text(L"/Script/Engine.KismetSystemLibrary"), xor_text(L"LineTraceSingle"));
         }
         if (input.afk)
         {
-            find(get_rotation_fn, L"/Script/Engine.Controller:GetControlRotation");
-            find(set_rotation_fn, L"/Script/Engine.Controller:SetControlRotation");
+            find(get_rotation_fn, xor_text(L"/Script/Engine.Controller:GetControlRotation"));
+            find(set_rotation_fn, xor_text(L"/Script/Engine.Controller:SetControlRotation"));
         }
     }
 
@@ -254,7 +254,7 @@ namespace
         if (!component_fn || !eyes_fn || !location_fn || !trace_fn || !manager_class || !tool_class || !decal_class || !live(pawn))
         {
             restore();
-            build_state("engine functions unavailable");
+            build_state(xor_text("engine functions unavailable"));
             return;
         }
         const auto inventory = read<std::uintptr_t>(pawn + 0x748);
@@ -262,7 +262,7 @@ namespace
         if (!hammer(item))
         {
             restore();
-            build_state("no hammer in hand");
+            build_state(xor_text("no hammer in hand"));
             return;
         }
         const auto manager = component(pawn, manager_class);
@@ -270,7 +270,7 @@ namespace
         if (!manager || !read_sparse(manager + 0xE8, 0x90, map))
         {
             restore();
-            build_state(manager ? "X map unreadable" : "build manager unavailable");
+            build_state(manager ? xor_text("X map unreadable") : xor_text("build manager unavailable"));
             return;
         }
         struct
@@ -282,7 +282,7 @@ namespace
         if (!call(pawn, eyes_fn, &view) || !visual_math::finite(view.eye) || (view.eye.X == 0 && view.eye.Y == 0 && view.eye.Z == 0) || !std::isfinite(view.rotation.Pitch) || !std::isfinite(view.rotation.Yaw))
         {
             restore();
-            build_state("view point unavailable");
+            build_state(xor_text("view point unavailable"));
             return;
         }
         constexpr double rad = 0.017453292519943295;
@@ -351,7 +351,7 @@ namespace
                 // SPOT forgets removed X entries; the game may have consumed them.
                 spot = {};
             }
-        build_state(moved ? "X follows hammer aim" : "no usable X in range");
+        build_state(moved ? xor_text("X follows hammer aim") : xor_text("no usable X in range"));
     }
 
     void service(const Request& input)
@@ -361,7 +361,7 @@ namespace
             next_join = 0;
             commit_next = false;
             active_player_state = 0;
-            faction_state("off");
+            faction_state(xor_text("off"));
         }
         if (!input.build && !input.join && !input.afk)
         {
@@ -375,9 +375,9 @@ namespace
         {
             restore();
             if (input.build)
-                build_state("no live world");
+                build_state(xor_text("no live world"));
             if (input.join)
-                faction_state("no live world");
+                faction_state(xor_text("no live world"));
             return;
         }
         if (world != active_world)
@@ -394,9 +394,9 @@ namespace
         {
             restore();
             if (input.build)
-                build_state("no live match");
+                build_state(xor_text("no live match"));
             if (input.join)
-                faction_state("no live match");
+                faction_state(xor_text("no live match"));
             return;
         }
         const auto instance = read<std::uintptr_t>(world + offsets::World::OwningGameInstance);
@@ -404,9 +404,9 @@ namespace
         {
             restore();
             if (input.build)
-                build_state("no game instance");
+                build_state(xor_text("no game instance"));
             if (input.join)
-                faction_state("no game instance");
+                faction_state(xor_text("no game instance"));
             return;
         }
         const auto players = read<TArray<std::uintptr_t>>(instance + offsets::UGameInstance::LocalPlayers);
@@ -415,9 +415,9 @@ namespace
         {
             restore();
             if (input.build)
-                build_state("no local player");
+                build_state(xor_text("no local player"));
             if (input.join)
-                faction_state("no local player");
+                faction_state(xor_text("no local player"));
             return;
         }
         const auto controller = read<std::uintptr_t>(player + offsets::UPlayer::PlayerController);
@@ -425,9 +425,9 @@ namespace
         {
             restore();
             if (input.build)
-                build_state("no local controller");
+                build_state(xor_text("no local controller"));
             if (input.join)
-                faction_state("no local controller");
+                faction_state(xor_text("no local controller"));
             return;
         }
         const auto ps = read<std::uintptr_t>(controller + offsets::APlayerController_Extra::ControllerPlayerState);
@@ -441,11 +441,11 @@ namespace
         {
             next_join = input.now + 500;
             if (!reserve_fn || !commit_fn || !state_class)
-                faction_state("faction functions unavailable");
+                faction_state(xor_text("faction functions unavailable"));
             else if (!manticore.ComparisonIndex)
-                faction_state("Manticore tag unavailable");
+                faction_state(xor_text("Manticore tag unavailable"));
             else if (!extras::derives(ps, state_class))
-                faction_state("no session player state");
+                faction_state(xor_text("no session player state"));
             else
             {
                 const auto faction = read<std::uintptr_t>(ps + offsets::AWDPlayerStateSession::FactionComponent);
@@ -453,7 +453,7 @@ namespace
                 if (current.ComparisonIndex == manticore.ComparisonIndex && current.Number == manticore.Number)
                 {
                     commit_next = false;
-                    faction_state("joined Manticore");
+                    faction_state(xor_text("joined Manticore"));
                 }
                 else if (!commit_next)
                 {
@@ -464,7 +464,7 @@ namespace
                         unsigned char pad[52];
                     } params{manticore, ++join_key};
                     commit_next = call(ps, reserve_fn, &params);
-                    faction_state(commit_next ? "request sent; waiting for faction" : "reserve call failed");
+                    faction_state(commit_next ? xor_text("request sent; waiting for faction") : xor_text("reserve call failed"));
                 }
                 else
                 {
@@ -473,7 +473,7 @@ namespace
                         int key;
                         unsigned char pad[60];
                     } params{join_key};
-                    faction_state(call(ps, commit_fn, &params) ? "request sent; waiting for faction" : "commit call failed");
+                    faction_state(call(ps, commit_fn, &params) ? xor_text("request sent; waiting for faction") : xor_text("commit call failed"));
                     commit_next = false;
                 }
             }
@@ -483,7 +483,7 @@ namespace
         {
             restore();
             if (input.build)
-                build_state("no possessed character");
+                build_state(xor_text("no possessed character"));
             return;
         }
         if (pawn != active_pawn)
@@ -500,7 +500,7 @@ namespace
         {
             restore();
             if (input.build)
-                build_state(input.menu ? "paused while menu is open" : "requires being on foot", !input.menu);
+                build_state(input.menu ? xor_text("paused while menu is open") : xor_text("requires being on foot"), !input.menu);
         }
         if (!input.afk || input.menu || seated || input.aiming)
         {
@@ -536,9 +536,9 @@ namespace
                 input = request;
                 pending = false;
                 if (input.build)
-                    build_report.delivery = "callback received";
+                    build_report.delivery = xor_text("callback received");
                 if (input.join)
-                    faction_report.delivery = "callback received";
+                    faction_report.delivery = xor_text("callback received");
             }
             ReleaseSRWLockExclusive(&mailbox);
         }
@@ -559,7 +559,7 @@ namespace
         DWORD pid = 0;
         const DWORD thread = GetWindowThreadProcessId(window, &pid);
         char name[64]{};
-        if (pid == GetCurrentProcessId() && IsWindowVisible(window) && GetClassNameA(window, name, sizeof(name)) && strcmp(name, "UnrealWindow") == 0)
+        if (pid == GetCurrentProcessId() && IsWindowVisible(window) && GetClassNameA(window, name, sizeof(name)) && strcmp(name, xor_text("UnrealWindow")) == 0)
         {
             *reinterpret_cast<DWORD*>(param) = thread;
             message_window = window;
@@ -598,17 +598,17 @@ void game_actions::update(const Config& settings, bool menu_visible)
     {
         was_build = settings.extra.build_x;
         AcquireSRWLockExclusive(&mailbox);
-        build_report.delivery = was_build ? "waiting for callback" : "off";
+        build_report.delivery = was_build ? xor_text("waiting for callback") : xor_text("off");
         ReleaseSRWLockExclusive(&mailbox);
-        log("Build X: update received %s", was_build ? "ON" : "OFF");
+        log(xor_text("Build X: update received %s"), was_build ? xor_text("ON") : xor_text("OFF"));
     }
     if (settings.extra.auto_join != was_join)
     {
         was_join = settings.extra.auto_join;
         AcquireSRWLockExclusive(&mailbox);
-        faction_report.delivery = was_join ? "waiting for callback" : "off";
+        faction_report.delivery = was_join ? xor_text("waiting for callback") : xor_text("off");
         ReleaseSRWLockExclusive(&mailbox);
-        log("Auto faction: update received %s", was_join ? "ON" : "OFF");
+        log(xor_text("Auto faction: update received %s"), was_join ? xor_text("ON") : xor_text("OFF"));
     }
     const bool enabled = settings.extra.build_x || settings.extra.auto_join || settings.extra.anti_afk;
     if (!hook && enabled && frame_ticks >= next_install)
@@ -619,11 +619,11 @@ void game_actions::update(const Config& settings, bool menu_visible)
         EnumWindows(find_window, reinterpret_cast<LPARAM>(&message_thread));
         if (message_thread)
             hook = SetWindowsHookExA(WH_GETMESSAGE, on_message, nullptr, message_thread);
-        log(hook ? "game actions ready" : "game actions unavailable; retrying");
+        log(hook ? xor_text("game actions ready") : xor_text("game actions unavailable; retrying"));
         if (settings.extra.build_x || settings.extra.auto_join)
         {
-            const char* delivery = hook ? "waiting for callback" : message_thread ? "hook install failed"
-                                                                                  : "game window missing";
+            const char* delivery = hook ? xor_text("waiting for callback") : message_thread ? xor_text("hook install failed")
+                                                                                            : xor_text("game window missing");
             AcquireSRWLockExclusive(&mailbox);
             if (settings.extra.build_x)
                 build_report.delivery = delivery;
@@ -650,9 +650,9 @@ void game_actions::update(const Config& settings, bool menu_visible)
         AcquireSRWLockExclusive(&mailbox);
         pending = false; // Allow the next publication to retry a failed wake.
         if (settings.extra.build_x)
-            build_report.delivery = "wake post failed";
+            build_report.delivery = xor_text("wake post failed");
         if (settings.extra.auto_join)
-            faction_report.delivery = "wake post failed";
+            faction_report.delivery = xor_text("wake post failed");
         ReleaseSRWLockExclusive(&mailbox);
     }
 }

@@ -23,36 +23,36 @@ namespace wdgs::actors
         };
 
         Definition g_definitions[] = {
-            {L"B_WDCore_MoverPlayerCharacter_C", "Player", Kind::player, {}},
-            {L"GC_Player_DroppedItem_Stop_C", "Item", Kind::dropped_item, {}},
-            {L"WDRotaryVehicle", "Chopper", Kind::heli, {}},
-            {L"WDVehicleWeaponExtension", "Chopper", Kind::heli, {}},
-            {L"GC_Vehicle_Moving_PZH2000_C", "SPH", Kind::sph2, {}},
-            {L"GC_GC_Vehicle_Moving_TNK_01_C", "Tank", Kind::tank_la26, {}},
-            {L"GC_Vehicle_Moving_APC_C", "APC", Kind::apc, {}},
-            {L"GC_Vehicle_Moving_Buggy_C", "Buggy", Kind::buggy, {}},
-            {L"GC_Vehicle_Moving_Truck_C", "Truck", Kind::truck, {}},
-            {L"GC_Vehicle_Moving_Boat_C", "Boat", Kind::boat, {}},
-            {L"GC_Vehicle_Moving_Bike_C", "Motorcycle", Kind::motorcycle, {}},
-            {L"B_PhysicalContainer_C", "PContainer", Kind::backpack, {}},
-            {L"WDPlayerInventoryContainer", "Container", Kind::backpack, {}}};
+            {xor_text(L"B_WDCore_MoverPlayerCharacter_C"), xor_text("Player"), Kind::player, {}},
+            {xor_text(L"GC_Player_DroppedItem_Stop_C"), xor_text("Item"), Kind::dropped_item, {}},
+            {xor_text(L"WDRotaryVehicle"), xor_text("Chopper"), Kind::heli, {}},
+            {xor_text(L"WDVehicleWeaponExtension"), xor_text("Chopper"), Kind::heli, {}},
+            {xor_text(L"GC_Vehicle_Moving_PZH2000_C"), xor_text("SPH"), Kind::sph2, {}},
+            {xor_text(L"GC_GC_Vehicle_Moving_TNK_01_C"), xor_text("Tank"), Kind::tank_la26, {}},
+            {xor_text(L"GC_Vehicle_Moving_APC_C"), xor_text("APC"), Kind::apc, {}},
+            {xor_text(L"GC_Vehicle_Moving_Buggy_C"), xor_text("Buggy"), Kind::buggy, {}},
+            {xor_text(L"GC_Vehicle_Moving_Truck_C"), xor_text("Truck"), Kind::truck, {}},
+            {xor_text(L"GC_Vehicle_Moving_Boat_C"), xor_text("Boat"), Kind::boat, {}},
+            {xor_text(L"GC_Vehicle_Moving_Bike_C"), xor_text("Motorcycle"), Kind::motorcycle, {}},
+            {xor_text(L"B_PhysicalContainer_C"), xor_text("PContainer"), Kind::backpack, {}},
+            {xor_text(L"WDPlayerInventoryContainer"), xor_text("Container"), Kind::backpack, {}}};
         std::size_t g_definition_count = sizeof(g_definitions) / sizeof(g_definitions[0]);
 
-      /*   Definition g_definitions[] = {
-            {L"B_WDCore_MoverPlayerCharacter_C", "Player", Kind::player, {}},
-            {L"GC_Player_DroppedItem_Stop_C", "Dropped Item", Kind::dropped_item, {}},
-            {L"WDRotaryVehicle", "Heli", Kind::heli, {}},
-            {L"WDVehicleWeaponExtension", "Heli", Kind::heli, {}},
-            {L"GC_Vehicle_Moving_PZH2000_C", "SPH2", Kind::sph2, {}},
-            {L"GC_GC_Vehicle_Moving_TNK_01_C", "Tank LA26", Kind::tank_la26, {}},
-            {L"GC_Vehicle_Moving_APC_C", "APC", Kind::apc, {}},
-            {L"GC_Vehicle_Moving_Buggy_C", "Buggy", Kind::buggy, {}},
-            {L"GC_Vehicle_Moving_Truck_C", "Truck", Kind::truck, {}},
-            {L"GC_Vehicle_Moving_Boat_C", "Boat", Kind::boat, {}},
-            {L"GC_Vehicle_Moving_Bike_C", "Motorcycle", Kind::motorcycle, {}},
-            {L"B_PhysicalContainer_C", "Backpack", Kind::backpack, {}},
-            {L"WDPlayerInventoryContainer", "Backpack", Kind::backpack, {}}};
-        std::size_t g_definition_count = sizeof(g_definitions) / sizeof(g_definitions[0]);*/
+        /*   Definition g_definitions[] = {
+              {L"B_WDCore_MoverPlayerCharacter_C", "Player", Kind::player, {}},
+              {L"GC_Player_DroppedItem_Stop_C", "Dropped Item", Kind::dropped_item, {}},
+              {L"WDRotaryVehicle", "Heli", Kind::heli, {}},
+              {L"WDVehicleWeaponExtension", "Heli", Kind::heli, {}},
+              {L"GC_Vehicle_Moving_PZH2000_C", "SPH2", Kind::sph2, {}},
+              {L"GC_GC_Vehicle_Moving_TNK_01_C", "Tank LA26", Kind::tank_la26, {}},
+              {L"GC_Vehicle_Moving_APC_C", "APC", Kind::apc, {}},
+              {L"GC_Vehicle_Moving_Buggy_C", "Buggy", Kind::buggy, {}},
+              {L"GC_Vehicle_Moving_Truck_C", "Truck", Kind::truck, {}},
+              {L"GC_Vehicle_Moving_Boat_C", "Boat", Kind::boat, {}},
+              {L"GC_Vehicle_Moving_Bike_C", "Motorcycle", Kind::motorcycle, {}},
+              {L"B_PhysicalContainer_C", "Backpack", Kind::backpack, {}},
+              {L"WDPlayerInventoryContainer", "Backpack", Kind::backpack, {}}};
+          std::size_t g_definition_count = sizeof(g_definitions) / sizeof(g_definitions[0]);*/
 
     } // namespace detail
 
@@ -139,7 +139,7 @@ namespace wdgs::actors
         if (!fname_to_narrow(class_name, class_name_narrow, sizeof(class_name_narrow)))
             return false;
         const std::string name(class_name_narrow);
-        const bool result = name.find("StationaryVehicle") != std::string::npos;
+        const bool result = name.find(xor_text("StationaryVehicle")) != std::string::npos;
         if (result)
             g_stationary_classes.insert(actor_class);
         else
@@ -218,7 +218,7 @@ namespace wdgs::actors
 
         const char* family = (seg_count >= 4 && segments[4][0]) ? segments[4] : tag_narrow;
         const char* variant = (seg_count >= 5 && segments[5][0]) ? segments[5] : nullptr;
-        bool is_default = variant && (_stricmp(variant, "Default") == 0 || _stricmp(variant, "Variant") == 0);
+        bool is_default = variant && (_stricmp(variant, xor_text("Default")) == 0 || _stricmp(variant, xor_text("Variant")) == 0);
 
         if (variant && !is_default)
         {
@@ -244,11 +244,11 @@ namespace wdgs::actors
                 while (*last_word && out < sizeof(abbrev) - 1)
                     abbrev[out++] = *last_word++;
                 abbrev[out] = '\0';
-                snprintf(buf, buf_size, "%s %s", family, abbrev);
+                snprintf(buf, buf_size, xor_text("%s %s"), family, abbrev);
             }
             else
             {
-                snprintf(buf, buf_size, "%s %s", family, variant);
+                snprintf(buf, buf_size, xor_text("%s %s"), family, variant);
             }
         }
         else
@@ -262,8 +262,8 @@ namespace wdgs::actors
         // A loading/default VariantTag can resolve to only "Vehicle" (or the
         // unparsed "Vehicle.*" path).  Treat that as no label so the stationary
         // mesh fallback gets a chance to resolve the actual model name.
-        return _stricmp(label, "Vehicle") == 0 ||
-               _strnicmp(label, "Vehicle.", 8) == 0;
+        return _stricmp(label, xor_text("Vehicle")) == 0 ||
+               _strnicmp(label, xor_text("Vehicle."), 8) == 0;
     }
 
     const char* try_get_vehicle_label(std::uintptr_t actor)
@@ -330,16 +330,16 @@ namespace wdgs::actors
         fname_to_narrow(mesh_name, mesh_name_narrow, sizeof(mesh_name_narrow));
         const std::string name(mesh_name_narrow);
         const char* label = nullptr;
-        if (name.rfind("SK_STN_05", 0) == 0)
-            label = "Stingray";
-        else if (name.rfind("SK_Deployable_Mortar", 0) == 0 || name.rfind("SK_STN_03", 0) == 0)
-            label = "L81 Mortar";
-        else if (name.rfind("SK_Mistral_Anti_Aircraft", 0) == 0)
-            label = "Talon 9K-SAM";
-        else if (name.rfind("SK_Phalanx_CIWS", 0) == 0)
-            label = "Vanguard CIWS";
-        else if (name.rfind("SK_STN_04", 0) == 0)
-            label = "Loudspeaker";
+        if (name.rfind(xor_text("SK_STN_05"), 0) == 0)
+            label = xor_text("Stingray");
+        else if (name.rfind(xor_text("SK_Deployable_Mortar"), 0) == 0 || name.rfind(xor_text("SK_STN_03"), 0) == 0)
+            label = xor_text("L81 Mortar");
+        else if (name.rfind(xor_text("SK_Mistral_Anti_Aircraft"), 0) == 0)
+            label = xor_text("Talon 9K-SAM");
+        else if (name.rfind(xor_text("SK_Phalanx_CIWS"), 0) == 0)
+            label = xor_text("Vanguard CIWS");
+        else if (name.rfind(xor_text("SK_STN_04"), 0) == 0)
+            label = xor_text("Loudspeaker");
 
         if (!label)
             return nullptr;

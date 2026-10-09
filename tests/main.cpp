@@ -20,6 +20,26 @@ namespace
     std::uintptr_t test_base;
     std::uintptr_t test_end;
 
+    const char* startup_xor = xor_text("XOR startup pointer remains valid");
+    const char* retained_xor()
+    {
+        return xor_text("XOR retained narrow text across calls");
+    }
+    const wchar_t* retained_wide_xor()
+    {
+        return xor_text(L"XOR retained wide text across calls");
+    }
+    DWORD WINAPI read_xor_strings(void* result)
+    {
+        bool valid = true;
+        const char* narrow = retained_xor();
+        const wchar_t* wide = retained_wide_xor();
+        for (int i = 0; i < 10000; ++i)
+            valid &= narrow == retained_xor() && wide == retained_wide_xor() && strcmp(narrow, "XOR retained narrow text across calls") == 0 && wcscmp(wide, L"XOR retained wide text across calls") == 0;
+        *static_cast<bool*>(result) = valid;
+        return 0;
+    }
+
     LONG CALLBACK count_memory_faults(EXCEPTION_POINTERS* exception)
     {
         const auto address = reinterpret_cast<std::uintptr_t>(exception->ExceptionRecord->ExceptionAddress);
@@ -99,6 +119,16 @@ int main(int argc, char** argv)
         return 0;
     }
     CreateDirectoryW(L"build", nullptr);
+    check(strcmp(startup_xor, "XOR startup pointer remains valid") == 0, "XOR startup pointers survive their initializer");
+    bool xor_results[2]{};
+    HANDLE xor_readers[]{CreateThread(nullptr, 0, read_xor_strings, &xor_results[0], 0, nullptr), CreateThread(nullptr, 0, read_xor_strings, &xor_results[1], 0, nullptr)};
+    for (HANDLE thread : xor_readers)
+        if (thread)
+        {
+            WaitForSingleObject(thread, INFINITE);
+            CloseHandle(thread);
+        }
+    check(xor_readers[0] && xor_readers[1] && xor_results[0] && xor_results[1], "XOR narrow and wide strings have stable storage for concurrent readers");
     failures += test_frame_exchange();
     failures += test_name_conversion();
     failures += test_transitions();

@@ -195,7 +195,7 @@ namespace game
             ActorObjectCacheEntry entry{};
             entry.actor_name = actor_name;
             entry.kind = match.kind;
-            entry.label = match.label ? match.label : "";
+            entry.label = match.label ? match.label : xor_text("");
             entry.vehicle_probe_done = vehicle_probe_done;
             entry.last_vehicle_probe_frame = vehicle_probe_done
                                                  ? g_actor_cache_frame

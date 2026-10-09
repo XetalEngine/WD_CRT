@@ -165,14 +165,14 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     if (aim_bone < 0 || aim_bone >= BONE_COUNT || !std::isfinite(aim_fov) || aim_fov <= 0.f)
     {
         if (report)
-            log("Magic: invalid bone or FOV setting");
+            log(xor_text("Magic: invalid bone or FOV setting"));
         return;
     }
 
     if (settings.mode < 0 || settings.mode > 2)
     {
         if (report)
-            log("Magic: invalid target mode");
+            log(xor_text("Magic: invalid target mode"));
         return;
     }
     // Target selection
@@ -219,7 +219,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
             if (elapsed < delay_off)
             {
                 if (report)
-                    log("Magic: waiting for dead-target delay");
+                    log(xor_text("Magic: waiting for dead-target delay"));
                 return;
             }
         }
@@ -288,7 +288,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         if (!best)
         {
             if (report)
-                log("Magic: no eligible target in FOV (players=%zu fov=%.0f bone=%d)", players.size(), aim_fov, settings.bone);
+                log(xor_text("Magic: no eligible target in FOV (players=%zu fov=%.0f bone=%d)"), players.size(), aim_fov, settings.bone);
             if (settings.magic_bullet)
                 wdgs::magic_bullet::probe(camera.location);
             return;
@@ -299,7 +299,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
 
     const bool magic_active = magic_at_distance(best->player.distance);
     if (report && !magic_active)
-        log("Magic: using Silent below minimum distance (target=%.0fm minimum=%.0fm)", best->player.distance, magic_min_distance);
+        log(xor_text("Magic: using Silent below minimum distance (target=%.0fm minimum=%.0fm)"), best->player.distance, magic_min_distance);
 
     // Visibility is sampled once while building the frame snapshot. Repeating
     // the engine line trace here adds a second expensive ProcessEvent call for
@@ -307,7 +307,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     if (settings.visible_check && !vehicle_aim.valid && !best->player.isVisible && !(magic_active && magic_ignore_visibility))
     {
         if (report)
-            log("%s: selected target blocked by Aim visibility check", magic_active ? "Magic" : "Silent");
+            log(xor_text("%s: selected target blocked by Aim visibility check"), magic_active ? xor_text("Magic") : xor_text("Silent"));
         if (settings.magic_bullet)
             wdgs::magic_bullet::probe(camera.location);
         return;
@@ -316,7 +316,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     if (aim_bone < 0)
     {
         if (report)
-            log("Magic: selected target has no projected bone");
+            log(xor_text("Magic: selected target has no projected bone"));
         return;
     }
     // Aim point & prediction
@@ -324,7 +324,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     if (bone_pos.X == 0.0 && bone_pos.Y == 0.0 && bone_pos.Z == 0.0)
     {
         if (report)
-            log("Magic: selected target has no bone position");
+            log(xor_text("Magic: selected target has no bone position"));
         if (settings.magic_bullet)
             wdgs::magic_bullet::probe(camera.location);
         return;
@@ -385,7 +385,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         if (report_target)
         {
             g_magic_reported_target = true;
-            log("Magic: target=%p bone=%d visible=%d on update thread", reinterpret_cast<void*>(best->actor_addr), aim_bone, best->player.isVisible);
+            log(xor_text("Magic: target=%p bone=%d visible=%d on update thread"), reinterpret_cast<void*>(best->actor_addr), aim_bone, best->player.isVisible);
         }
         wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !magic_active, report_target);
     }

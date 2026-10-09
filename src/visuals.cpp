@@ -30,7 +30,7 @@ namespace
 
     Color vehicle_color(const game::ProjectedWorldActor& v)
     {
-        return color(strcmp(v.actor.label, "Talon 9K-SAM") == 0 || strcmp(v.actor.label, "Vanguard CIWS") == 0 ? config.colors.sam : config.esp.vehicle_color);
+        return color(strcmp(v.actor.label, xor_text("Talon 9K-SAM")) == 0 || strcmp(v.actor.label, xor_text("Vanguard CIWS")) == 0 ? config.colors.sam : config.esp.vehicle_color);
     }
 
     void box(float x, float y, float w, float h, Color c)
@@ -134,11 +134,11 @@ namespace
         if (show_name || show_distance)
         {
             wchar_t label[32];
-            const wchar_t* player_name = data.player_name[0] ? data.player_name : L"Player";
+            const wchar_t* player_name = data.player_name[0] ? data.player_name : xor_text(L"Player");
             const float label_x = head.valid ? head.x : center;
             const float label_y = (head.valid ? head.y : top) - 21;
             if (show_distance)
-                swprintf_s(label, show_name ? L"[%.0fm] " : L"[%.0fm]", data.distance);
+                swprintf_s(label, show_name ? xor_text(L"[%.0fm] ") : xor_text(L"[%.0fm]"), data.distance);
             if (show_name && show_distance)
                 text_pair(label_x, label_y, label, player_name, name, 13, background);
             else
@@ -152,7 +152,7 @@ namespace
         if (!screen.valid || screen.x < 0 || screen.y < 0 || screen.x >= screen_width || screen.y >= screen_height)
             return;
         char label[96];
-        snprintf(label, sizeof(label), "%s  %.0fm", actor.actor.label, actor.actor.distance_meters);
+        snprintf(label, sizeof(label), xor_text("%s  %.0fm"), actor.actor.label, actor.actor.distance_meters);
         text(screen.x, screen.y + 7, label, c, 12.5f, true, color(config.colors.label_fill));
     }
 
@@ -224,13 +224,13 @@ namespace
             if (marker.bag && marker.nearby)
                 c = color(config.colors.warning);
             char label[96];
-            snprintf(label, sizeof(label), "%s  %.0fm", marker.label, marker.distance);
+            snprintf(label, sizeof(label), xor_text("%s  %.0fm"), marker.label, marker.distance);
             text(point.x, point.y, label, c, 12.5f, true, color(config.colors.label_fill));
             if (marker.bag)
             {
                 if (marker.nearby)
                 {
-                    snprintf(label, sizeof(label), "%d ON LOOT", marker.nearby);
+                    snprintf(label, sizeof(label), xor_text("%d ON LOOT"), marker.nearby);
                     text(point.x, point.y + 16, label, c, 12, true);
                 }
             }
@@ -238,12 +238,12 @@ namespace
             {
                 if (marker.timed)
                 {
-                    snprintf(label, sizeof(label), "%.1fs", marker.fuse_left);
+                    snprintf(label, sizeof(label), xor_text("%.1fs"), marker.fuse_left);
                     rect(point.x - 20, point.y + 33, 40, 3, {0, 0, 0, 0.8f});
                     rect(point.x - 20, point.y + 33, 40 * std::clamp(marker.fuse_left / marker.fuse_total, 0.f, 1.f), 3, c);
                 }
                 else
-                    strcpy_s(label, "ARMED");
+                    strcpy_s(label, xor_text("ARMED"));
                 text(point.x, point.y + 16, label, c, 12, true);
             }
         }
@@ -283,7 +283,7 @@ namespace
         }
         arrow(x, y, 0, 6, color(config.colors.radar_local));
         char label[64];
-        snprintf(label, sizeof(label), "Impact %.0fm | %.0f mil", m.range_m, m.sight_mils);
+        snprintf(label, sizeof(label), xor_text("Impact %.0fm | %.0f mil"), m.range_m, m.sight_mils);
         text(x, y + radius + 6, label, color(config.colors.mortar), 13, true);
     }
 
@@ -296,29 +296,29 @@ namespace
             y += 18;
         };
         if (config.aimbot.enabled)
-            row(config.aimbot.bone == 4 ? "Aim | Nearest bone" : "Aim");
+            row(config.aimbot.bone == 4 ? xor_text("Aim | Nearest bone") : xor_text("Aim"));
         if (config.aimbot.silent_aim)
-            row("Silent aim");
+            row(xor_text("Silent aim"));
         if (config.aimbot.magic_bullet)
-            row("Magic Bullet");
+            row(xor_text("Magic Bullet"));
         if (config.prediction.enabled)
-            row("Prediction");
+            row(xor_text("Prediction"));
         if (config.extra.no_recoil)
-            row("No recoil");
+            row(xor_text("No recoil"));
         if (config.extra.explosives)
-            row("Explosives");
+            row(xor_text("Explosives"));
         if (config.extra.death_bags)
-            row("d-bag");
+            row(xor_text("d-bag"));
         if (config.extra.tracers)
-            row("Tracers");
+            row(xor_text("Tracers"));
         if (config.extra.build_x)
-            row("Silent Build X");
+            row(xor_text("Silent Build X"));
         if (config.extra.auto_join)
-            row("Auto join Manticore");
+            row(xor_text("Auto join Manticore"));
         if (config.extra.anti_afk)
-            row("Anti AFK");
+            row(xor_text("Anti AFK"));
         if (snapshot.mortar.valid)
-            row(config.extra.mortar_mode == 1 ? "Mortar | Impact radar" : "Mortar | Auto aim");
+            row(config.extra.mortar_mode == 1 ? xor_text("Mortar | Impact radar") : xor_text("Mortar | Auto aim"));
     }
 
     void radar(const game::Snapshot& snapshot)
@@ -408,7 +408,7 @@ namespace
         const float heading = snapshot.local_yaw_valid ? (snapshot.local_yaw - smoothed_yaw) * 0.0174532925f : 0;
         line(x, y, x + std::sin(heading) * 12, y - std::cos(heading) * 12, local, 2);
         char label[32];
-        snprintf(label, sizeof(label), "%.0fm", range);
+        snprintf(label, sizeof(label), xor_text("%.0fm"), range);
         text(x, y + half - 23, label, local, 12, true);
     }
 } // namespace
@@ -462,14 +462,14 @@ void visuals::draw(const game::Snapshot& snapshot, const CameraIPC* camera)
     {
         const auto& m = snapshot.mortar;
         char label[96];
-        snprintf(label, sizeof(label), "%.0fm    %.0f mil    Target %.0fm", m.range_m, m.sight_mils, m.target_range_m);
+        snprintf(label, sizeof(label), xor_text("%.0fm    %.0f mil    Target %.0fm"), m.range_m, m.sight_mils, m.target_range_m);
         text(screen_width * 0.5f, 12, label, mortar_color, 16, true);
         const int first = std::max(0, m.selected_index - 7);
         for (int i = first; i < static_cast<int>(m.candidates.size()) && i < first + 8; ++i)
         {
             const auto& c = m.candidates[i];
             wchar_t label_w[80];
-            swprintf_s(label_w, L"%ls  %.0fm", c.name, c.distance_m);
+            swprintf_s(label_w, xor_text(L"%ls  %.0fm"), c.name, c.distance_m);
             const Color label_color = i == m.selected_index ? mortar_color : c.in_range ? white
                                                                                         : warning_color;
             text(screen_width - 230.f, screen_height * 0.3f + (i - first) * 22, label_w, label_color);
@@ -493,7 +493,7 @@ void visuals::draw(const game::Snapshot& snapshot, const CameraIPC* camera)
     if (config.anti_sam.flare_warning && snapshot.anti_sam.incoming)
     {
         char label[80];
-        snprintf(label, sizeof(label), "SAM INCOMING  %.0fm%s", snapshot.anti_sam.distance_meters, snapshot.anti_sam.flare_sent ? "  FLARE DEPLOYED" : "");
+        snprintf(label, sizeof(label), xor_text("SAM INCOMING  %.0fm%s"), snapshot.anti_sam.distance_meters, snapshot.anti_sam.flare_sent ? xor_text("  FLARE DEPLOYED") : xor_text(""));
         text(screen_width * 0.5f, 42, label, warning_color, 18, true);
     }
 }

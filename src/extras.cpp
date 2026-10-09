@@ -105,23 +105,23 @@ namespace
         label = {};
         label.actor = actor;
         label.name = name;
-        strcpy_s(label.text, kind == 1 ? "GRENADE" : kind == 2 ? "PLACED EXPLOSIVE"
-                                                 : kind == 4   ? "d-bag"
-                                                               : "CONTAINER");
+        strcpy_s(label.text, kind == 1 ? xor_text("GRENADE") : kind == 2 ? xor_text("PLACED EXPLOSIVE")
+                                                           : kind == 4   ? xor_text("d-bag")
+                                                                         : xor_text("CONTAINER"));
         if (kind <= 2)
         {
             const auto tag = read<FNameValue>(actor + (kind == 1 ? 0x4B8 : 0x368));
             FString text = engine_funcs::conv_name_to_string(tag);
             const auto str = text.ToWString(128);
             const char* word = nullptr;
-            if (str.find(L"Smoke") != std::wstring::npos)
-                word = "SMOKE";
-            else if (str.find(L"C4") != std::wstring::npos || str.find(L"IED") != std::wstring::npos)
-                word = "C4";
-            else if (str.find(L"Claymore") != std::wstring::npos)
-                word = "CLAYMORE";
-            else if (str.find(L"Mine") != std::wstring::npos)
-                word = "MINE";
+            if (str.find(xor_text(L"Smoke")) != std::wstring::npos)
+                word = xor_text("SMOKE");
+            else if (str.find(xor_text(L"C4")) != std::wstring::npos || str.find(xor_text(L"IED")) != std::wstring::npos)
+                word = xor_text("C4");
+            else if (str.find(xor_text(L"Claymore")) != std::wstring::npos)
+                word = xor_text("CLAYMORE");
+            else if (str.find(xor_text(L"Mine")) != std::wstring::npos)
+                word = xor_text("MINE");
             if (word)
                 strcpy_s(label.text, word);
             engine_funcs::release_string(text);
@@ -185,17 +185,17 @@ void extras::begin(std::uintptr_t world, const Config& settings)
         { if (!dst) dst = engine::static_find_object(nullptr, nullptr, name); };
         if (explosives)
         {
-            resolve(explosive_class, L"/Script/WDGame.WDExplosive");
-            resolve(placed_class, L"/Script/WDGame.WDPlaceable");
+            resolve(explosive_class, xor_text(L"/Script/WDGame.WDExplosive"));
+            resolve(placed_class, xor_text(L"/Script/WDGame.WDPlaceable"));
         }
         if (bags)
         {
-            resolve(container_class, L"/Script/WDGame.WDContainer");
-            resolve(bag_class, L"/Script/WDGame.WDPlayerInventoryContainer");
+            resolve(container_class, xor_text(L"/Script/WDGame.WDContainer"));
+            resolve(bag_class, xor_text(L"/Script/WDGame.WDPlayerInventoryContainer"));
         }
         if (vehicles)
         {
-            const wchar_t* names[]{L"/Script/WDGame.WDStationaryVehicle", L"/Script/WDGame.WDAirplaneVehicle", L"/Script/WDGame.WDRotaryVehicle", L"/Script/WDGame.WDTrackedVehicle", L"/Script/WDGame.WDWheeledVehiclePawn"};
+            const wchar_t* names[]{xor_text(L"/Script/WDGame.WDStationaryVehicle"), xor_text(L"/Script/WDGame.WDAirplaneVehicle"), xor_text(L"/Script/WDGame.WDRotaryVehicle"), xor_text(L"/Script/WDGame.WDTrackedVehicle"), xor_text(L"/Script/WDGame.WDWheeledVehiclePawn")};
             for (int i = 0; i < 5; ++i)
                 resolve(vehicle_classes[i], names[i]);
         }

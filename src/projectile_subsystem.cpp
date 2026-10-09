@@ -44,7 +44,7 @@ namespace wdgs::projectile_subsystem
             std::string lower = name;
             std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c)
                            { return static_cast<char>(std::tolower(c)); });
-            const bool match = lower.find("projectilesubsystem") != std::string::npos;
+            const bool match = lower.find(xor_text("projectilesubsystem")) != std::string::npos;
             g_class_matches.emplace(class_ptr, match);
             return match;
         }
@@ -53,9 +53,9 @@ namespace wdgs::projectile_subsystem
         {
             if (g_projectile_class && is_valid_ptr(reinterpret_cast<const void*>(g_projectile_class)))
                 return g_projectile_class;
-            constexpr const wchar_t* paths[] = {
-                L"/Script/WDGame.WDProjectileSubsystem",
-                L"/Script/WDGame.FWDProjectileSubsystem",
+            const wchar_t* paths[] = {
+                xor_text(L"/Script/WDGame.WDProjectileSubsystem"),
+                xor_text(L"/Script/WDGame.FWDProjectileSubsystem"),
             };
             for (const wchar_t* path : paths)
             {

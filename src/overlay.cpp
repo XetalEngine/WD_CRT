@@ -246,7 +246,7 @@ bool overlay::initialize(HWND window)
     if (SUCCEEDED(hr))
         hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(&text_factory));
     if (SUCCEEDED(hr))
-        hr = text_factory->CreateTextFormat(L"Tahoma", nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 14.f, L"en-us", &format);
+        hr = text_factory->CreateTextFormat(xor_text(L"Tahoma"), nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 14.f, xor_text(L"en-us"), &format);
     release(dxgi);
     if (FAILED(hr) || !create_target(frames[0]) || !create_target(frames[1]))
     {
@@ -474,7 +474,7 @@ bool overlay::capture(const wchar_t* path)
     if (SUCCEEDED(hr))
         hr = copy->LockRect(&pixels, nullptr, D3DLOCK_READONLY);
     FILE* file = nullptr;
-    if (SUCCEEDED(hr) && _wfopen_s(&file, path, L"wb") == 0)
+    if (SUCCEEDED(hr) && _wfopen_s(&file, path, xor_text(L"wb")) == 0)
     {
         BITMAPFILEHEADER header{0x4D42, static_cast<DWORD>(54 + screen_width * screen_height * 4), 0, 0, 54};
         BITMAPINFOHEADER info{40, screen_width, -screen_height, 1, 32, BI_RGB};

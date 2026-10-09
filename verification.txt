@@ -1,17 +1,33 @@
-Magic minimum distance for combined Silent + Magic
+Application string XOR
 
-Aim > Projectiles now shows Magic min dist (m) when both Silent aim and Magic bullet are enabled. Range is 0-1000 meters; default is 0 to preserve current behavior. Below the threshold, Silent redirects each eligible round once with its existing prediction and visibility rules. At or above the threshold, Magic continuously steers to the current selected bone with its own visibility-bypass setting. Magic-only and Silent-only ignore this combined-mode threshold. A Silent round can enter Magic steering when the target crosses the threshold. Returning below it stops continuous steering without redirecting an already-handled round a second time. Magic's dead-target delay applies only at Magic distances.
+Preserved the user-supplied xor.h byte for byte. Applied xor_text to all 637 runtime string-literal occurrences in src, including narrow/wide engine names, menu text/tooltips, formats, diagnostics, registry/sharing identifiers and pattern strings. The wrapper uses the supplied xorstr object and crypt() method. Includes, comments, sizeof literal lengths and static-assert diagnostics remain compile-time syntax. Runtime-generated player names and formatted output are not compile-time literals; PE import names and compiler/runtime-generated messages are not changed.
 
-Uses the existing cached target distance and settings snapshot on the update thread. No new actor scans, distance calculations, native game calls, timers, hooks, threads or imports. The projectile steering math and ownership/flight guards are unchanged. Tests' synthetic key and projectile-subsystem setup helpers compile only under WD_TEST and are absent from the DLL. Diagnostic messages retain the WD_xetal: filter and remain bounded per aim-key hold.
+src/xor_text.h gives each call site a persistent, immutable owner initialized by normal CRT startup before DllMain starts the workers. It shares decode routines between storage types. There are no per-frame decryptions, heap allocations, lazy-init guards, new locks, threads, timers or Windows calls. The raw xor_a macro returns storage belonging to a temporary and cannot safely supply pointers retained after the expression. The persistent owners preserve menu arrays, tooltips, defaults, status mailboxes and cached labels. Status comparisons retain their pointer fast path and compare contents when identical text occupies different storage, avoiding extra status logs. Debug output still uses WD_xetal: with the same displayed text.
 
-Config version 7 appends one float and supports registry versions 1-6 and shared strings from versions 3-6. Older settings default to 0 m without changing saved choices. Save/Load and Copy/Paste preserve the new value. Invalid values are defaulted or clamped. The slider reuses the existing control and spare row without moving other controls, and retains its value while hidden.
+Validation: 330 Desktop checks passed after the release rebuild, including narrow/wide persistent lifetime and 10,000 repeated reads on two simultaneous threads, as well as existing gameplay simulation, settings migration/sharing, UI interaction and renderer checks. All eight menu captures and the Magic-distance tooltip capture matched the prior captures byte for byte. The source audit found no unwrapped runtime literals. All 543 distinct source strings of four or more characters were absent as complete plaintext strings outside import metadata. The remaining Head/exit matches are suffixes of InitializeSListHead, _crt_atexit and _cexit imports. Shorter strings are verified at source level because short machine-code sequences can match coincidentally. No live injection, game FPS or runtime-memory secrecy is claimed. XOR obfuscates stored literals and increases DLL size; decoded text remains in process memory while the DLL is loaded.
 
-Validation: regression suite passed, including actual aim selection/retargeting against a synthetic projectile pool below, at and above the threshold; once-per-round behavior, threshold crossings, raw-bone vs prediction targeting, visibility gates, single-mode behavior, 0 m behavior, vehicle targets and menu gating. Settings tests cover version 6 migration, current persistence/sharing, range validation and slider interaction/visibility. The slider and tooltip capture was visually checked. The same reviewed source was copied to the Desktop project and its release DLL rebuilt successfully; imports were audited and diff whitespace checked. Existing Desktop compiler-option warnings remain. The user confirmed the preceding Magic implementation works in-game; the new threshold has not been tested in a live match or benchmarked for FPS.
+The Desktop project changes only add the wrapper header to its file list. Existing output/compiler settings, gameplay logic, thread placement, saved configuration format and the provided xor.h are retained. Existing ignored Desktop compiler-option warnings remain. New verification tool: audit_strings.py.
 
-Desktop release: 251904 bytes (246.0 KiB), 119 imports unchanged.
-Regression suite: 328 checks passed, 0 failures.
-DLL SHA256: 359560d4b0072d3e954deccd5922b15c13dcfe9fd735e15dc0f41bb5834f0d1a
+Desktop DLL: 361472 bytes (353.0 KiB), increase 107.0 KiB from the preceding release.
+Imports: 118 (previously 119); no new imports.
+Regression suite: 330 checks passed, 0 failures.
+DLL SHA256: c1a438b6a19b3e98cdf9b54acd5031f5c2015883df6aef9ec234dd036a71a15d
 
+DLL: C:\xampp\htdocs\downloads\dll.dll
+Wrapped runtime literal occurrences: 637
+Compile-only sizeof/static_assert literals: 2
+Unique source strings checked in binary (4+ characters, null-terminated): 543
+Unwrapped runtime literals: 0
+Plaintext source strings found: 0
+Import-name substring matches (loader metadata):
+'Head' is part of PE import InitializeSListHead
+'exit' is part of PE import _crt_atexit
+'exit' is part of PE import _cexit
+Scope: application-owned runtime literals in src. Includes, comments, diagnostics and literal lengths are compile-time syntax. PE import/export names and CRT-generated messages are outside xor.h; runtime-generated names/labels are not compile-time literals. Strings shorter than four characters are covered by the source check, not a conclusive binary search.
+
+
+PASS: XOR startup pointers survive their initializer
+PASS: XOR narrow and wide strings have stable storage for concurrent readers
 PASS: no snapshot displayed before first publication
 PASS: complete initial snapshot handed to renderer
 PASS: no new publication retains the last complete frame
@@ -23,7 +39,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 217
+Concurrent snapshot reads: 2859
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -203,7 +219,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.486 ms
+Busy-GPU stage 1 submission: 0.256 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -212,7 +228,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.202 ms
+Busy-GPU stage 2 submission: 0.136 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -221,7 +237,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.300 ms
+Busy-GPU stage 3 submission: 0.127 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -335,7 +351,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.488 ms CPU average, 12.127 ms max; 19.697 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.296 ms CPU average, 5.012 ms max; 7.932 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -347,6 +363,6 @@ PASS: present external frame
 PASS: external presentation preserves pixels and alpha
 0 failure(s)
 
-FullName                                                       Length
---------                                                       ------
-C:\Users\Administrator\Documents\ChatGPT\re-write\build\wd.dll 253952
+FullName                          Length
+--------                          ------
+C:\xampp\htdocs\downloads\dll.dll 361472

@@ -5,8 +5,8 @@ namespace game_actions
 {
     struct Status
     {
-        const char* delivery = "not requested";
-        const char* result = "not run";
+        const char* delivery = xor_text("not requested");
+        const char* result = xor_text("not run");
     };
     Status build_status();
     Status faction_status();

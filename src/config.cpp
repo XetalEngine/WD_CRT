@@ -7,9 +7,9 @@
 namespace
 {
 #ifdef WD_TEST
-    constexpr const char* key = "Software\\WDRewriteTests";
+    const char* const key = xor_text("Software\\WDRewriteTests");
 #else
-    constexpr const char* key = "Software\\WDGS\\Rewrite";
+    const char* const key = xor_text("Software\\WDGS\\Rewrite");
 #endif
     struct Stored
     {
@@ -133,7 +133,7 @@ bool save_config()
     HKEY opened;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, key, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &opened, nullptr) != ERROR_SUCCESS)
         return false;
-    const LSTATUS result = RegSetValueExA(opened, "Settings", 0, REG_BINARY, reinterpret_cast<const BYTE*>(&stored), sizeof(stored));
+    const LSTATUS result = RegSetValueExA(opened, xor_text("Settings"), 0, REG_BINARY, reinterpret_cast<const BYTE*>(&stored), sizeof(stored));
     RegCloseKey(opened);
     return result == ERROR_SUCCESS;
 }
@@ -142,7 +142,7 @@ bool load_config()
 {
     Stored stored{};
     DWORD size = sizeof(stored);
-    if (RegGetValueA(HKEY_CURRENT_USER, key, "Settings", RRF_RT_REG_BINARY, nullptr, &stored, &size) != ERROR_SUCCESS)
+    if (RegGetValueA(HKEY_CURRENT_USER, key, xor_text("Settings"), RRF_RT_REG_BINARY, nullptr, &stored, &size) != ERROR_SUCCESS)
         return false;
     if (stored.version == 1 && size == offsetof(Stored, data) + offsetof(Config, colors))
     {
@@ -188,8 +188,8 @@ std::string encode_config(const Config& value)
     Stored stored{7, value};
     validate_config(stored.data);
     const auto bytes = reinterpret_cast<const unsigned char*>(&stored);
-    constexpr char hex[] = "0123456789ABCDEF";
-    std::string result = "XENGINE7:";
+    const char* hex = xor_text("0123456789ABCDEF");
+    std::string result = xor_text("XENGINE7:");
     result.reserve(9 + sizeof(stored) * 2 + 8);
     std::uint32_t hash = 2166136261u;
     for (std::size_t i = 0; i < sizeof(stored); ++i)
@@ -199,7 +199,7 @@ std::string encode_config(const Config& value)
         hash = (hash ^ bytes[i]) * 16777619u;
     }
     char checksum[9];
-    snprintf(checksum, sizeof(checksum), "%08X", hash);
+    snprintf(checksum, sizeof(checksum), xor_text("%08X"), hash);
     result += checksum;
     return result;
 }
@@ -208,7 +208,7 @@ bool decode_config(const char* text, std::size_t length, Config& value)
 {
     if (!text || length < 17)
         return false;
-    if (memcmp(text, "XENGINE", 7) || text[8] != ':' || text[7] < '3' || text[7] > '7')
+    if (memcmp(text, xor_text("XENGINE"), 7) || text[8] != ':' || text[7] < '3' || text[7] > '7')
         return false;
     const DWORD version = text[7] - '0';
     std::size_t stored_size = sizeof(Stored);

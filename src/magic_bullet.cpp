@@ -71,14 +71,14 @@ bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std
     if (!finite(target) || !pawn)
     {
         if (report)
-            log("Magic: invalid target or local pawn index (pawn=%u)", pawn);
+            log(xor_text("Magic: invalid target or local pawn index (pawn=%u)"), pawn);
         return false;
     }
     projectile_subsystem::Snapshot pool{};
     if (!projectile_subsystem::acquire(pool))
     {
         if (report)
-            log("Magic: projectile pool unavailable (subsystem=%p pool=%p slots=%u)", reinterpret_cast<void*>(pool.subsystem), reinterpret_cast<void*>(pool.pool), pool.allocated);
+            log(xor_text("Magic: projectile pool unavailable (subsystem=%p pool=%p slots=%u)"), reinterpret_cast<void*>(pool.subsystem), reinterpret_cast<void*>(pool.pool), pool.allocated);
         return false;
     }
     bool changed = false;
@@ -112,7 +112,7 @@ bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std
         }
     }
     if (report)
-        log("Magic: active=%u unreadable=%u other-owner=%u landed=%u external=%u no-flight=%u invalid-trajectory=%u write-failed=%u redirected=%u pawn=%u vehicle=%u", active, unreadable, counts[other_owner], counts[landed], counts[external], counts[no_flight], counts[invalid_trajectory], counts[write_failed], counts[redirected], pawn, vehicle);
+        log(xor_text("Magic: active=%u unreadable=%u other-owner=%u landed=%u external=%u no-flight=%u invalid-trajectory=%u write-failed=%u redirected=%u pawn=%u vehicle=%u"), active, unreadable, counts[other_owner], counts[landed], counts[external], counts[no_flight], counts[invalid_trajectory], counts[write_failed], counts[redirected], pawn, vehicle);
     return changed;
 }
 

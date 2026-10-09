@@ -216,7 +216,7 @@ class FName
         {
             return;
         }
-        s += "_";
+        s += xor_text("_");
         s += std::to_string(raw_number - 1u);
     }
 
