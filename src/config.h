@@ -155,6 +155,9 @@ struct Config
 
     // Version 5: append to preserve older saved settings.
     float selected_visible_color[4] = {0, 1, 1, 1};
+
+    // Version 6: Magic can steer toward an occluded selected target.
+    bool magic_ignore_visibility = true;
 };
 
 namespace wdgs::actors

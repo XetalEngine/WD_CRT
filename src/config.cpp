@@ -13,7 +13,7 @@ namespace
 #endif
     struct Stored
     {
-        DWORD version = 5;
+        DWORD version = 6;
         Config data;
     };
     static_assert(offsetof(Config, colors) == 184, "Keep the version 1 settings prefix intact");
@@ -74,6 +74,7 @@ float radar_scan_range(const Config& value)
 
 void validate_config(Config& value)
 {
+    normalize_bool(value.magic_ignore_visibility);
     auto& e = value.esp;
     for (bool* b : {&e.enabled, &e.agent_name, &e.skeleton, &e.box, &e.lines, &e.health, &e.distance, &e.visible_check, &e.team, &e.loot, &e.vehicles, &e.minimap, &e.minimap_auto_range, &value.aimbot.enabled, &value.aimbot.draw_fov, &value.aimbot.visible_check, &value.aimbot.team_check, &value.aimbot.silent_aim, &value.aimbot.magic_bullet, &value.prediction.enabled, &value.prediction.bullet_drop, &value.prediction.velocity_lead, &value.prediction.show_line, &value.anti_sam.auto_flare, &value.anti_sam.flare_warning, &value.mortar.mortar_aim})
         normalize_bool(*b);
@@ -127,7 +128,7 @@ void validate_config(Config& value)
 bool save_config()
 {
     validate_config(config);
-    Stored stored{5, config};
+    Stored stored{6, config};
     HKEY opened;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, key, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &opened, nullptr) != ERROR_SUCCESS)
         return false;
@@ -164,7 +165,11 @@ bool load_config()
     {
         // Keep the previous selected color for hidden targets; visible defaults to cyan.
     }
-    else if (stored.version != 5 || size != sizeof(stored))
+    else if (stored.version == 5 && size == offsetof(Stored, data) + offsetof(Config, magic_ignore_visibility))
+    {
+        // Preserve the old palette and enable Magic's visibility bypass by default.
+    }
+    else if (stored.version != 6 || size != sizeof(stored))
         return false;
     if (stored.version < 4)
         migrate_radar(stored.data);
@@ -175,11 +180,11 @@ bool load_config()
 
 std::string encode_config(const Config& value)
 {
-    Stored stored{5, value};
+    Stored stored{6, value};
     validate_config(stored.data);
     const auto bytes = reinterpret_cast<const unsigned char*>(&stored);
     constexpr char hex[] = "0123456789ABCDEF";
-    std::string result = "XENGINE5:";
+    std::string result = "XENGINE6:";
     result.reserve(9 + sizeof(stored) * 2 + 8);
     std::uint32_t hash = 2166136261u;
     for (std::size_t i = 0; i < sizeof(stored); ++i)
@@ -198,7 +203,7 @@ bool decode_config(const char* text, std::size_t length, Config& value)
 {
     if (!text || length < 17)
         return false;
-    if (memcmp(text, "XENGINE", 7) || text[8] != ':' || text[7] < '3' || text[7] > '5')
+    if (memcmp(text, "XENGINE", 7) || text[8] != ':' || text[7] < '3' || text[7] > '6')
         return false;
     const DWORD version = text[7] - '0';
     std::size_t stored_size = sizeof(Stored);
@@ -206,6 +211,8 @@ bool decode_config(const char* text, std::size_t length, Config& value)
         stored_size = offsetof(Stored, data) + offsetof(Config, radar);
     else if (version == 4)
         stored_size = offsetof(Stored, data) + offsetof(Config, selected_visible_color);
+    else if (version == 5)
+        stored_size = offsetof(Stored, data) + offsetof(Config, magic_ignore_visibility);
     if (length != 9 + stored_size * 2 + 8)
         return false;
     const auto digit = [](char c)

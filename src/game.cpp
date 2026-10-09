@@ -1048,7 +1048,7 @@ namespace game
                 is_valid_ptr(reinterpret_cast<void*>(observed_vehicle))
                     ? read<std::uint32_t>(observed_vehicle + offsets::UObject::InternalIndex)
                     : 0;
-            aimbot::tick(output.players, my_controller, cam, settings.aimbot, settings.prediction, local_bullet_speed, local_zeroing_meters, local_gravity_scale, output.prediction_line, output.weapon_stats.muzzle_position, output.weapon_stats.muzzle_valid, vehicle_ctx, local_pawn_internal_index, local_vehicle_internal_index, menu_visible);
+            aimbot::tick(output.players, my_controller, cam, settings.aimbot, settings.prediction, local_bullet_speed, local_zeroing_meters, local_gravity_scale, output.prediction_line, output.weapon_stats.muzzle_position, output.weapon_stats.muzzle_valid, vehicle_ctx, local_pawn_internal_index, local_vehicle_internal_index, menu_visible, settings.magic_ignore_visibility);
             output.aim_selected_actor = aimbot::selected_actor();
             // With both visibility filters off, trace only the selected player for its highlight.
             if (output.aim_selected_actor && settings.esp.enabled && !settings.esp.visible_check && !settings.aimbot.visible_check)

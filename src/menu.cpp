@@ -77,12 +77,40 @@ namespace
     bool button(float a, float b, float w, const char* label, bool selected = false, const char* help = nullptr)
     {
         hint(a, b, w, 24, help);
-        rect(a, b, w, 24, selected ? color(config.colors.menu_accent) : control);
-        text(a + w * 0.5f, b + 3, label, selected ? Color{0, 0, 0, 1} : color(config.colors.menu_value), 13, true);
+        const bool hover = mouse_x >= a && mouse_x < a + w && mouse_y >= b && mouse_y < b + 24;
+        Color edge = color(config.colors.menu_accent);
+        edge.a *= selected ? 0.55f : (hover ? 0.4f : 0.12f);
+        rect(a, b, w, 24, control);
+        if (selected)
+        {
+            Color tint = color(config.colors.menu_accent);
+            tint.a *= 0.12f;
+            rect(a, b, w, 24, tint);
+            rect(a, b, 2, 24, color(config.colors.menu_accent));
+        }
+        rect(a, b, w, 24, edge, false);
+        text(a + w * 0.5f, b + 3, label, selected ? color(config.colors.menu_accent) : color(config.colors.menu_value), 13, true);
         if (!clicked || !inside(a, b, w, 24))
             return false;
         clicked = false;
         return true;
+    }
+
+    void section(int column, float top, const char* label)
+    {
+        const float a = x + 18 + column * 316;
+        Color rule = color(config.colors.menu_accent);
+        rule.a *= 0.22f;
+        text(a, y + top, label, muted, 11);
+        line(a + 140, y + top + 7, a + 292, y + top + 7, rule);
+    }
+
+    void divider(int column, int row)
+    {
+        const float a = x + 18 + column * 316, b = y + 85 + row * 30;
+        Color rule = color(config.colors.menu_accent);
+        rule.a *= 0.16f;
+        line(a, b, a + 292, b, rule);
     }
 
     void toggle(int column, int row, const char* label, bool& value, const char* help)
@@ -228,8 +256,14 @@ void menu::draw()
         return;
     if (!held)
         active_slider = nullptr;
+    Color border = color(config.colors.menu_accent);
+    border.a *= 0.3f;
     rect(x, y, width, height, color(config.colors.menu_fill));
-    rect(x, y, width, height, color(config.colors.menu_accent), false);
+    rect(x, y, width, height, border, false);
+    rect(x, y, width, 2, color(config.colors.menu_accent));
+    line(x + 18, y + 36, x + width - 18, y + 36, border);
+    rect(x + 1, y + height - 34, width - 2, 33, control);
+    line(x + 18, y + height - 34, x + width - 18, y + height - 34, border);
     text(x + 18, y + 9, "X-Engine", color(config.colors.menu_accent), 17);
     text(x + 450, y + 12, "Insert to close", muted, 12);
     const char* tabs[]{"Aim", "Players", "World", "Mini Radar", "Mortar", "Effects", "Colors", "Settings"};
@@ -237,6 +271,10 @@ void menu::draw()
     for (int i = 0; i < 8; ++i)
         if (button(x + 18 + i * 78, y + 46, 74, tabs[i], i == tab, tab_help[i]))
             tab = i;
+    line(x + 322, y + 78, x + 322, y + (tab == 7 ? 208 : height - 43), border);
+    const char* headings[][2]{{"TARGETING", "PROJECTILES"}, {"PLAYER OVERLAY", "FILTERS & RANGE"}, {"WORLD MARKERS", "RELATED SETTINGS"}, {"RADAR SETUP", "SHOW ON RADAR"}, {"MORTAR TARGETING", "HELICOPTER DEFENSE"}, {"BULLET TRACERS", "EXTRA FEATURES"}, {"PALETTE EDITOR", "COLOR PREVIEW"}, {"LOCAL SETTINGS", "SHARING & SESSION"}};
+    section(0, 73, headings[tab][0]);
+    section(1, 73, headings[tab][1]);
     auto& e = config.esp;
     auto& a = config.aimbot;
     const char* bones[]{"Head", "Neck", "Chest", "Pelvis", "Nearest"};
@@ -246,9 +284,12 @@ void menu::draw()
     switch (tab)
     {
     case 0:
+        divider(0, 4);
+        divider(0, 6);
+        divider(1, 5);
         toggle(0, 0, "Enabled", a.enabled, "Enables aiming while you hold the aim key.\nAiming pauses while the menu is open.");
         toggle(0, 1, "Draw FOV", a.draw_fov, "Shows the aim selection circle around the crosshair.");
-        toggle(0, 2, "Visibility check", a.visible_check, "Requires a visible target for on-foot aiming.");
+        toggle(0, 2, "Visibility check", a.visible_check, "Requires visible targets, except Magic when\nMagic ignore visibility is enabled.");
         toggle(0, 3, "Team check", a.team_check, "Excludes teammates from aim target selection.");
         choice(0, 4, "Target bone", a.bone, bones, 5, "Chooses the body part to aim at. Nearest selects\nthe valid bone closest to the crosshair.");
         choice(0, 5, "Target priority", a.mode, modes, 3, "Prefers the closest target, nearest to the crosshair,\nor lowest health. Click to cycle.");
@@ -268,14 +309,19 @@ void menu::draw()
         }
         toggle(1, 0, "Silent aim", a.silent_aim, "Redirects each new local projectile once toward\nthe selected target without moving the camera.");
         toggle(1, 1, "Magic bullet", a.magic_bullet, "Keeps steering local projectiles toward the target.\nTakes priority when Silent aim is also enabled.");
-        number(1, 2, "Release delay (s)", a.magic_bullet_delay_off, 0.1f, 0, 10, "Waits before selecting another target after your\nMagic Bullet target reaches zero health.", "%.1f");
-        toggle(1, 3, "No recoil", config.extra.no_recoil, "Suppresses weapon recoil while enabled.\nRestores the original values when disabled.");
-        toggle(1, 4, "Prediction", config.prediction.enabled, "Estimates where to aim for projectile travel time.\nMagic Bullet uses the current target bone instead.");
-        toggle(1, 5, "Bullet drop", config.prediction.bullet_drop, "Compensates for projectile gravity when\nprediction is enabled.");
-        toggle(1, 6, "Velocity lead", config.prediction.velocity_lead, "Aims ahead of moving targets when\nprediction is enabled.");
-        toggle(1, 7, "Prediction line", config.prediction.show_line, "Draws a line from the target bone to the predicted\naim point when prediction is active.");
+        toggle(1, 2, "Magic ignore visibility", config.magic_ignore_visibility, "Lets Magic steer toward an occluded selected target.\nFOV, team and projectile validity checks still apply.");
+        number(1, 3, "Release delay (s)", a.magic_bullet_delay_off, 0.1f, 0, 10, "Waits before selecting another target after your\nMagic Bullet target reaches zero health.", "%.1f");
+        toggle(1, 4, "No recoil", config.extra.no_recoil, "Suppresses weapon recoil while enabled.\nRestores the original values when disabled.");
+        toggle(1, 5, "Prediction", config.prediction.enabled, "Estimates where to aim for projectile travel time.\nMagic Bullet uses the current target bone instead.");
+        toggle(1, 6, "Bullet drop", config.prediction.bullet_drop, "Compensates for projectile gravity when\nprediction is enabled.");
+        toggle(1, 7, "Velocity lead", config.prediction.velocity_lead, "Aims ahead of moving targets when\nprediction is enabled.");
+        toggle(1, 8, "Prediction line", config.prediction.show_line, "Draws a line from the target bone to the predicted\naim point when prediction is active.");
         break;
     case 1:
+        divider(0, 3);
+        divider(0, 6);
+        section(1, 187, "DISTANCE LIMITS");
+        section(1, 277, "LABEL FORMAT");
         toggle(0, 0, "Player ESP", e.enabled, "Shows player overlays using the options below.\nMini Radar has its own visibility switches.");
         toggle(0, 1, "Names", e.agent_name, "Includes player names in the selected text layout.");
         toggle(0, 2, "Skeleton", e.skeleton, "Draws bones for living players within skeleton range.");
@@ -298,6 +344,9 @@ void menu::draw()
         }
         break;
     case 2:
+        section(0, 157, "LOOT & HAZARDS");
+        divider(0, 5);
+        divider(0, 7);
         toggle(0, 0, "Vehicles", e.vehicles, "Shows vehicle labels and distances in the world.");
         number(0, 1, "Vehicle range (m)", e.vehicle_distance, 100, 1, 5000, "Maximum distance for world vehicle labels\nand vehicle aim candidates.");
         toggle(0, 3, "Dropped items", e.loot, "Shows dropped-item labels and distances in the world.");
@@ -306,8 +355,19 @@ void menu::draw()
         number(0, 6, "Explosive range", config.extra.explosive_range, 25, 10, 1000, "Maximum distance for world explosive labels.");
         toggle(0, 7, "d-bag info", config.extra.death_bags, "Shows bag/container labels and nearby looter counts.");
         number(0, 8, "Bag range (m)", config.extra.bag_range, 25, 10, 1000, "Maximum distance for bag and container labels.");
+        text(x + 334, y + 94, "Mini Radar", color(config.colors.menu_text));
+        text(x + 334, y + 116, "Choose radar categories in Mini Radar.\nRadar filters are separate from these labels.", muted, 12);
+        divider(1, 3);
+        text(x + 334, y + 184, "Marker colors", color(config.colors.menu_text));
+        text(x + 334, y + 206, "Edit marker colors in Colors > World.\nEach category has its own color.", muted, 12);
         break;
     case 3:
+        divider(0, 3);
+        divider(0, 5);
+        divider(0, 7);
+        divider(0, 10);
+        divider(1, 3);
+        divider(1, 7);
         toggle(0, 0, "Radar", e.minimap, "Shows the circular mini radar with selected categories.");
         toggle(0, 1, "Automatic range", e.minimap_auto_range, "Fits the radar range to the selected categories.\nHidden categories do not expand the range.");
         number(0, 2, "Radar range (m)", e.minimap_range, 25, 25, 5000, "Sets the radar radius in meters when\nAutomatic range is OFF.");
@@ -335,6 +395,8 @@ void menu::draw()
         toggle(1, 9, "Bags / containers", config.radar.bags, "Includes bag and container markers on the radar.\nWorld labels can remain OFF.");
         break;
     case 4:
+        section(0, 157, "OPERATING MODE");
+        section(0, 241, "CONTROLS");
         toggle(0, 0, "Mortar aim", config.mortar.mortar_aim, "Enables mortar auto-targeting in Auto aim mode.\nHold the aim key while the menu is closed.");
         number(0, 1, "FOV (degrees)", config.mortar.fov, 5, 1, 180, "Sets the angular limit for mortar target selection.");
         {
@@ -348,12 +410,28 @@ void menu::draw()
         break;
     case 5:
     {
+        divider(0, 2);
+        divider(1, 3);
         const char* styles[]{"Rainbow trail", "Rainbow shots", "Solid", "Gradient"};
         toggle(0, 0, "Bullet tracers", config.extra.tracers, "Draws trails for your recent projectiles.");
         choice(0, 1, "Tracer color", config.extra.tracer_style, styles, 4, "Cycles rainbow trails, rainbow per shot, solid color\nand a two-color gradient. Edit colors in Colors.");
         number(0, 2, "Lifetime (s)", config.extra.tracer_lifetime, 0.25f, 0.25f, 5, "Sets how long a projectile trail stays visible.", "%.2f");
         number(0, 3, "Line width", config.extra.tracer_width, 0.5f, 1, 4, "Sets the thickness of projectile trails in pixels.", "%.1f");
-        toggle(1, 0, "Auto join Manticore", config.extra.auto_join, "Automatically requests and confirms Manticore\nwhen the faction selection screen is available.");
+        const bool previous_join = config.extra.auto_join;
+        toggle(1, 0, "Auto join Manticore", config.extra.auto_join, "Requests and confirms Manticore in a live match.\nWorks on the faction/deploy screen without a pawn.");
+        if (previous_join != config.extra.auto_join)
+            log("Auto faction: menu toggle %s", config.extra.auto_join ? "ON" : "OFF");
+        if (config.extra.auto_join)
+        {
+            section(0, 205, "FACTION STATUS");
+            const auto faction = game_actions::faction_status();
+            char line[128];
+            snprintf(line, sizeof(line), "Delivery: %s", faction.delivery);
+            text(x + 18, y + 224, line, muted, 13);
+            snprintf(line, sizeof(line), "Last: %s", faction.result);
+            text(x + 18, y + 246, line, muted, 13);
+            hint(x + 18, y + 224, 292, 42, "Shows callback delivery and faction progress.\nRequests retry until the local faction is Manticore.");
+        }
         toggle(1, 1, "Anti AFK", config.extra.anti_afk, "Makes a tiny aim movement every five seconds on foot,\nwhile the menu is closed and aim is inactive.");
         toggle(1, 2, "Active features HUD", config.extra.feature_hud, "Shows a compact list of enabled features\nat the top left of the screen.");
         const bool previous_build = config.extra.build_x;
@@ -362,9 +440,10 @@ void menu::draw()
             log("Build X: menu toggle %s", config.extra.build_x ? "ON" : "OFF");
         if (config.extra.build_x)
         {
+            section(1, 205, "BUILD X STATUS");
             const auto build = game_actions::build_status();
             char line[128];
-            snprintf(line, sizeof(line), "Build X: %s", build.delivery);
+            snprintf(line, sizeof(line), "Delivery: %s", build.delivery);
             text(x + 334, y + 224, line, muted, 13);
             snprintf(line, sizeof(line), "Last: %s", build.result);
             text(x + 334, y + 246, line, muted, 13);
@@ -375,6 +454,7 @@ void menu::draw()
     }
     case 6:
     {
+        section(0, 157, "RGBA CHANNELS");
         static int group, selected;
         const char* groups[]{"Players", "World", "Effects", "Radar", "Menu"};
         const int previous = group;
@@ -424,6 +504,9 @@ void menu::draw()
     }
     break;
     case 7:
+        section(0, 218, "NOTES");
+        line(x + 18, y + 160, x + 310, y + 160, border);
+        line(x + 334, y + 120, x + 626, y + 120, border);
         if (button(x + 18, y + 88, 292, "Save settings", false, "Saves the current settings for the next time\nyou load the DLL."))
             status = save_config() ? "Settings saved" : "Save failed";
         if (button(x + 18, y + 128, 292, "Load settings", false, "Replaces current settings with your last saved setup.\nUnsaved changes are discarded."))

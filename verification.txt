@@ -1,18 +1,16 @@
-Aim target visibility colors and Magic Bullet investigation
+Menu refresh
 
-Selected infantry now uses cyan when visible and yellow when occluded while the Aim key is held. Box, skeleton, snapline and label share the selected color; the health bar retains its health-based palette. Both selected colors are editable in Colors > Players and reset with the palette. Existing saved custom selected colors remain the hidden color. Version 5 appends the visible selected color and preserves registry versions 1-4 and shared strings from versions 3-4. Mortar highlighting retains the previous selected color.
+Preserved the 660x452 menu, all eight tabs, the two-column layout, control positions, click areas, hotkeys and settings behavior. Added section headings, subtle group dividers, a column separator, a top accent and a separate footer. Selected tabs and enabled toggles use a dark accent tint, a thin accent strip and accent-colored text. Hover highlights the border immediately using existing mouse coordinates. The World tab's spare column points to radar filters and world colors; optional action diagnostics have their own headings.
 
-Existing snapshot visibility is reused. When both visibility filters are off and player ESP is enabled, the updater traces only the selected player for its highlight. Rendering performs no visibility calls. No timers, threads, imports or additional entity scans were added.
+Uses existing drawing primitives, cached Windows Tahoma layouts and configurable menu colors. No fonts or images are embedded. No animation, timer, polling, new Windows imports or gameplay/thread changes. Added drawing only runs while the menu is open.
 
-Magic runs on the uncapped update thread after entity collection, through game::tick -> aimbot::tick -> magic_bullet::retarget_all. It writes velocity toward the selected bone, not position. There is no firing-state gate: holding Aim after firing can redirect an eligible airborne round. The menu, target validity, Aim visibility filter and projectile eligibility gates still apply. Tracer trails can outlive active rounds.
+Validation: staging regression suite passed, followed by a Desktop build and passing regression suite after final polish. Existing menu input checks cover retained clicks, consecutive controls, held-button suppression and sliders. Captured and visually reviewed all eight tabs plus the combined optional-action diagnostics. Capture cursors were moved outside the menu so tooltips do not obscure the layout. Source diff passes whitespace checks. Existing Desktop compiler-option warnings remain. Live gameplay and FPS were not measured.
 
-Added bounded WD_xetal: Magic: diagnostics on each Aim-key press with Magic enabled: blocked selection reason, or selected target followed by pool availability / counts from that scan. Counts distinguish other ownership, landed, external movement, missing flight time, invalid trajectory data, failed writes and successful redirects. The trajectory math, eligibility checks and thread placement were preserved. The report observes only that press's update; it is not continuous telemetry. A successful write is not proof that engine simulation retained it. Live logs are still required to determine why the user's upward shots do not steer downward; no live fix is claimed.
+Previous Magic ignore visibility and auto-faction fixes remain included and unchanged. Their separate notes are in build/magic-visibility-notes.txt and build/faction-notes.txt.
 
-Validation includes rendering visible/hidden/custom-selected colors and clearing selection; version 4 migration and current settings persistence/sharing; and redirecting an upward round with 1.2 seconds of flight time to a point below it at unchanged speed. Existing ownership, landed-round, tracer, menu, transition and callback tests remain. Initial color pixel assertions sampled antialiased half-pixel edges; the test fixture was aligned to pixel centers, with no renderer changes. The final Desktop suite passed. Live gameplay and FPS were not tested. Existing compiler-option warnings remain.
-
-Desktop release: 246272 bytes (240.5 KiB); 119 imports (unchanged).
-Regression suite: 289 checks passed, 0 failures.
-DLL SHA256: 25e6a9e5c7a5dd671a33f13eeeee30476906bb626132b58289dd289ced4ec991
+Desktop release: 251392 bytes (245.5 KiB), 119 imports unchanged.
+Regression suite: 304 checks passed, 0 failures.
+DLL SHA256: 78bd8d4d5dd2e4c1e657dc963b9ef2c0541ed7c5b2f17b52aac845966aab389c
 
 PASS: no snapshot displayed before first publication
 PASS: complete initial snapshot handed to renderer
@@ -25,7 +23,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 274
+Concurrent snapshot reads: 212
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -81,8 +79,10 @@ PASS: requested feature defaults
 PASS: shared settings round trip with new feature fields
 PASS: shared settings preserve radar filters and 400 pixel size
 PASS: shared settings preserve the visible target color
+PASS: shared settings preserve a disabled Magic visibility bypass
 PASS: version 3 shared settings migrate radar options and retired feet labels
 PASS: version 4 shared settings keep custom colors and radar and add cyan visible targets
+PASS: version 5 shared settings enable Magic visibility bypass and preserve prior settings
 PASS: radar vehicle types can be selected independently
 PASS: automatic radar collection covers its supported range
 PASS: manual radar collection respects selected range
@@ -113,19 +113,30 @@ PASS: Build X follows a new aim direction and surface distance
 PASS: Silent Build X restores markers when disabled
 PASS: Build X forgets a consumed map entry without moving it again, matching SPOT
 PASS: leaving the world discards Build X pointers without touching old objects
+PASS: auto faction does not send RPCs in an invalid match context
 PASS: auto join can reserve on deploy screen and respects its retry interval
-PASS: auto join commits after reservation
+PASS: auto faction resolves relative and alternate paths and sends the faction tag and key on the local player state
+PASS: auto join commits the same reservation key on the same player state
 PASS: auto join stops requesting once already on Manticore
+PASS: auto faction reports success only after the faction value changes
+PASS: disabling the only action cancels its pending faction reservation before re-enabling
+PASS: re-enabled auto faction commits the new reservation
+PASS: replaced player state starts a fresh reservation instead of committing the previous player's key
 PASS: anti AFK does not turn immediately when enabled
 PASS: anti AFK acts only after its interval
 PASS: create disposable Unreal window for action callback
 PASS: Build X publication waits for the window message callback
 PASS: menu status exposes an undelivered Build X callback
-PASS: real message hook delivers Build X and moves the marker
+PASS: window-filtered message pump receives the action wake and moves the marker
 PASS: menu status records real callback delivery and its active result
 PASS: message callback follows a changed hammer aim point
 PASS: opening the menu restores the X but preserves its last active diagnostic
 PASS: callback cleanup restores the X before detaching
+PASS: auto faction publishes while the menu is open and waits for its game callback
+PASS: window-filtered callback reserves a faction on the deploy screen without a pawn
+PASS: faction callback keeps the 500 ms RPC interval
+PASS: faction callback commits the reserved key
+PASS: faction callback stops requests after the replicated faction becomes Manticore
 PASS: render camera advances without changing or waiting for entity publication
 PASS: late camera sample never calls native ProcessEvent
 PASS: fixed world geometry follows a rightward camera turn immediately
@@ -151,12 +162,14 @@ PASS: settings validation
 PASS: save isolated test settings
 PASS: settings, palette and radar position round trip
 PASS: visible target color survives save and load
+PASS: disabled Magic visibility bypass survives save and load
 PASS: version 1 migration keeps custom settings and upgrades unchanged colors
 PASS: truncated version 2 settings are rejected
 PASS: version 2 migration supplies new defaults without overwriting old settings
 PASS: version 3 migration doubles the old default radar and preserves feature settings
 PASS: version 4 keeps custom hidden target color and defaults visible targets to cyan
-PASS: save version 5 settings
+PASS: version 5 settings default Magic visibility bypass on and retain colors and radar
+PASS: save version 6 settings
 PASS: radar filters survive save and load
 PASS: bad settings leave current state unchanged
 PASS: stationary trajectory
@@ -170,7 +183,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.370 ms
+Busy-GPU stage 1 submission: 0.522 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -179,7 +192,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.303 ms
+Busy-GPU stage 2 submission: 0.226 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -188,7 +201,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.220 ms
+Busy-GPU stage 3 submission: 0.207 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -228,7 +241,7 @@ PASS: begin Build X diagnostic menu frame
 PASS: Build X toggle changes the setting before callback delivery
 PASS: capture the Build X toggle frame before its settled state
 PASS: begin settled Build X diagnostic menu frame
-PASS: Build X enabled button and diagnostic labels render together
+PASS: Build X and faction diagnostic labels render together
 PASS: begin toggle frame
 PASS: toggle changes actual setting
 PASS: begin unchanged toggle frame
@@ -298,7 +311,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.536 ms CPU average, 12.077 ms max; 45.981 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.631 ms CPU average, 13.104 ms max; 32.355 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -312,4 +325,4 @@ PASS: external presentation preserves pixels and alpha
 
 FullName                          Length
 --------                          ------
-C:\xampp\htdocs\downloads\dll.dll 246272
+C:\xampp\htdocs\downloads\dll.dll 251392

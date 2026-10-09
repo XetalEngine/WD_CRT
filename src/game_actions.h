@@ -3,12 +3,13 @@
 
 namespace game_actions
 {
-    struct BuildStatus
+    struct Status
     {
         const char* delivery = "not requested";
         const char* result = "not run";
     };
-    BuildStatus build_status();
+    Status build_status();
+    Status faction_status();
     void update(const Config& settings, bool menu_visible);
     void stop();
 #ifdef WD_TEST

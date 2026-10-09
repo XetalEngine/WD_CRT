@@ -145,10 +145,12 @@ int main(int argc, char** argv)
     config.esp.minimap_x = 320;
     config.esp.minimap_y = 140;
     config.selected_visible_color[0] = 0.4f;
+    config.magic_ignore_visibility = false;
     check(save_config(), "save isolated test settings");
     config = {};
     check(load_config() && config.aimbot.fov == 135 && config.esp.visible_color[1] == 0.25f && config.colors.radar_grid[2] == 0.35f && config.esp.minimap_x == 320 && config.esp.minimap_y == 140, "settings, palette and radar position round trip");
     check(config.selected_visible_color[0] == 0.4f, "visible target color survives save and load");
+    check(!config.magic_ignore_visibility, "disabled Magic visibility bypass survives save and load");
     unsigned char legacy[188]{};
     const DWORD version = 1;
     memcpy(legacy, &version, sizeof(version));
@@ -185,7 +187,13 @@ int main(int argc, char** argv)
     RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, v4, sizeof(v4));
     config.selected_visible_color[0] = 1;
     check(load_config() && config.radar.items && !config.radar.helicopters && config.colors.selected[0] == 0.6f && config.selected_visible_color[0] == 0 && config.selected_visible_color[1] == 1 && config.selected_visible_color[2] == 1, "version 4 keeps custom hidden target color and defaults visible targets to cyan");
-    check(save_config(), "save version 5 settings");
+    config.selected_visible_color[0] = 0.25f;
+    unsigned char v5[4 + offsetof(Config, magic_ignore_visibility)]{5};
+    memcpy(v5 + 4, &config, offsetof(Config, magic_ignore_visibility));
+    RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, v5, sizeof(v5));
+    config.magic_ignore_visibility = false;
+    check(load_config() && config.magic_ignore_visibility && config.selected_visible_color[0] == 0.25f && config.colors.selected[0] == 0.6f && config.radar.items && !config.radar.helicopters, "version 5 settings default Magic visibility bypass on and retain colors and radar");
+    check(save_config(), "save version 6 settings");
     config.radar.items = false;
     config.radar.helicopters = true;
     check(load_config() && config.radar.items && !config.radar.helicopters, "radar filters survive save and load");
@@ -267,7 +275,7 @@ int main(int argc, char** argv)
     failures += test_effect_drawing();
     for (int tab = 0; tab < 8; ++tab)
     {
-        menu::test_input(tab, tab == 5 ? 665.f : 340.f, tab == 5 ? 190.f : 160.f, false);
+        menu::test_input(tab, 0, 0, false);
         check(begin_frame(), "begin menu frame");
         menu::draw();
         check(overlay::end(), "present menu frame");
@@ -276,7 +284,9 @@ int main(int argc, char** argv)
         check(overlay::capture(path), "capture menu tab");
     }
     const bool saved_build_x = config.extra.build_x;
+    const bool saved_auto_join = config.extra.auto_join;
     config.extra.build_x = false;
+    config.extra.auto_join = true;
     menu::test_input(5, 665, 250, true);
     check(begin_frame(), "begin Build X diagnostic menu frame");
     menu::draw();
@@ -286,8 +296,9 @@ int main(int argc, char** argv)
     menu::test_input(5, 0, 0, false);
     check(begin_frame(), "begin settled Build X diagnostic menu frame");
     menu::draw();
-    check(overlay::end() && overlay::capture(L"build/build-x-status.bmp"), "Build X enabled button and diagnostic labels render together");
+    check(overlay::end() && overlay::capture(L"build/build-x-status.bmp"), "Build X and faction diagnostic labels render together");
     config.extra.build_x = saved_build_x;
+    config.extra.auto_join = saved_auto_join;
     menu::test_input(0, 340, 160, true);
     check(begin_frame(), "begin toggle frame");
     menu::draw();

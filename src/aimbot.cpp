@@ -16,6 +16,7 @@ namespace
     std::uintptr_t g_magic_dead_actor = 0;
     double g_magic_dead_since{};
     bool g_magic_reported = false;
+    bool g_magic_reported_target = false;
     constexpr float kMagicShortRangeMeters = 50.f;
     // Helpers
     int bone_slot_for_config(int cfg_bone)
@@ -114,6 +115,7 @@ int aimbot::target_bone(const game::ProjectedPlayer& player, int configured)
 void aimbot::reset()
 {
     g_magic_reported = false;
+    g_magic_reported_target = false;
     g_locked_actor = 0;
     g_magic_dead_actor = 0;
     g_magic_dead_since = {};
@@ -121,7 +123,7 @@ void aimbot::reset()
 }
 
 // Main tick
-void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* controller, const CameraIPC& camera, const AimbotSettings& settings, const PredictionSettings& prediction_settings, float local_bullet_speed, float local_zeroing_meters, float local_gravity_scale, game::PredictionLine& prediction_line, const FVector& muzzle_position, bool muzzle_valid, const VehicleAimContext& vehicle_aim, std::uint32_t local_pawn_internal_index, std::uint32_t local_vehicle_internal_index, bool menu_visible)
+void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* controller, const CameraIPC& camera, const AimbotSettings& settings, const PredictionSettings& prediction_settings, float local_bullet_speed, float local_zeroing_meters, float local_gravity_scale, game::PredictionLine& prediction_line, const FVector& muzzle_position, bool muzzle_valid, const VehicleAimContext& vehicle_aim, std::uint32_t local_pawn_internal_index, std::uint32_t local_vehicle_internal_index, bool menu_visible, bool magic_ignore_visibility)
 {
     prediction_line = {};
     if (!settings.enabled || !is_valid_ptr(controller))
@@ -138,6 +140,8 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     }
     const bool report = settings.magic_bullet && !g_magic_reported;
     g_magic_reported = settings.magic_bullet;
+    if (!settings.magic_bullet)
+        g_magic_reported_target = false;
 
     const double now = frame_time;
     float delta_time = static_cast<float>(now - g_last_tick);
@@ -273,7 +277,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         if (!best)
         {
             if (report)
-                log("Magic: no eligible target in FOV");
+                log("Magic: no eligible target in FOV (players=%zu fov=%.0f bone=%d)", players.size(), aim_fov, settings.bone);
             if (settings.magic_bullet)
                 wdgs::magic_bullet::probe(camera.location);
             return;
@@ -285,7 +289,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     // Visibility is sampled once while building the frame snapshot. Repeating
     // the engine line trace here adds a second expensive ProcessEvent call for
     // the same target on every aim tick.
-    if (settings.visible_check && !vehicle_aim.valid && !best->player.isVisible)
+    if (settings.visible_check && !vehicle_aim.valid && !best->player.isVisible && !(settings.magic_bullet && magic_ignore_visibility))
     {
         if (report)
             log("Magic: selected target blocked by Aim visibility check");
@@ -361,9 +365,12 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
             (std::isfinite(best->player.distance) && best->player.distance < kMagicShortRangeMeters)
                 ? bone_pos
                 : aim_point;
-        if (report)
+        // Report the first redirect attempt even if selection became valid after the key press.
+        const bool report_target = settings.magic_bullet && !g_magic_reported_target;
+        g_magic_reported_target = settings.magic_bullet;
+        if (report_target)
             log("Magic: target=%p bone=%d visible=%d on update thread", reinterpret_cast<void*>(best->actor_addr), aim_bone, best->player.isVisible);
-        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !settings.magic_bullet, report);
+        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !settings.magic_bullet, report_target);
     }
 
     // Silent aim redirects a new local round once; Magic Bullet keeps steering it.

@@ -32,10 +32,13 @@ namespace
         }
     };
     Object session, state_type, manager_type, tool_type, decal_type, explosive_type, container_type;
-    Object actor_type, scene_type, trace_type;
+    Object actor_type, scene_type, trace_type, string_type;
     Object component_fn, eyes_fn, location_fn, trace_fn, reserve_fn, commit_fn, string_fn, library, get_rot_fn, set_rot_fn;
     std::uintptr_t pawn_address, item_address, manager_address, tool_address;
     int moved, traces, reserved, committed, rotated, event_calls;
+    int reserve_key, commit_key;
+    FNameValue reserved_tag{};
+    std::uintptr_t reserved_ps, committed_ps;
     FVector test_eye{100, 200, 300};
     FRotator test_rotation{};
     float hit_fraction = 0.4f;
@@ -50,12 +53,14 @@ namespace
             out = &scene_type;
         else if (s == L"/Script/Engine.KismetSystemLibrary")
             out = &trace_type;
+        else if (s == L"/Script/Engine.KismetStringLibrary")
+            out = &string_type;
         else if (s.find(L"WDGameStateSession") != s.npos)
             out = &session;
         else if (s.find(L"Server_ReserveFaction") != s.npos)
-            out = &reserve_fn;
+            out = outer == state_type.bytes ? &reserve_fn : nullptr;
         else if (s.find(L"Server_CommitFaction") != s.npos)
-            out = &commit_fn;
+            out = s == L"/Script/WDGame.WDPlayerStateSession.Server_CommitFactionReservation" ? &commit_fn : nullptr;
         else if (s.find(L"WDPlayerStateSession") != s.npos)
             out = &state_type;
         else if (s.find(L"WDPawnBuildableManager") != s.npos)
@@ -73,7 +78,7 @@ namespace
         else if (s.find(L"LineTraceSingle") != s.npos)
             out = s == L"/Script/Engine.KismetSystemLibrary:LineTraceSingle" ? &trace_fn : nullptr;
         else if (s.find(L"Conv_StringToName") != s.npos)
-            out = &string_fn;
+            out = s == L"/Script/Engine.KismetStringLibrary.Conv_StringToName" ? &string_fn : nullptr;
         else if (s.find(L"Default__KismetStringLibrary") != s.npos)
             out = &library;
         else if (s.find(L"GetControlRotation") != s.npos)
@@ -120,9 +125,18 @@ namespace
             memcpy(bytes + sizeof(FString), &tag, sizeof(tag));
         }
         else if (function == reserve_fn.bytes)
+        {
             ++reserved;
+            memcpy(&reserved_tag, bytes, sizeof(reserved_tag));
+            memcpy(&reserve_key, bytes + 8, sizeof(reserve_key));
+            reserved_ps = obj;
+        }
         else if (function == commit_fn.bytes)
+        {
             ++committed;
+            memcpy(&commit_key, bytes, sizeof(commit_key));
+            committed_ps = obj;
+        }
         else if (function == get_rot_fn.bytes)
         {
             const FRotator rotation{0, 20, 0};
@@ -175,7 +189,7 @@ int test_features()
     check(config.aimbot.fov == 1, "opposite FOV hotkeys together do not change the setting");
     menu::test_fov(false, false);
     config = previous_config;
-    check(settings.aimbot.bone == 4 && settings.extra.explosives && !settings.extra.no_recoil && !settings.extra.auto_join && !settings.extra.anti_afk && !settings.extra.feature_hud && !settings.extra.build_x, "requested feature defaults");
+    check(settings.aimbot.bone == 4 && settings.extra.explosives && settings.magic_ignore_visibility && !settings.extra.no_recoil && !settings.extra.auto_join && !settings.extra.anti_afk && !settings.extra.feature_hud && !settings.extra.build_x, "requested feature defaults");
     settings.extra.tracers = true;
     settings.extra.tracer_style = 3;
     settings.extra.tracer_color[1] = 0.37f;
@@ -183,11 +197,13 @@ int test_features()
     settings.radar.items = settings.radar.bags = true;
     settings.radar.helicopters = false;
     settings.selected_visible_color[0] = 0.45f;
+    settings.magic_ignore_visibility = false;
     const auto encoded = encode_config(settings);
     Config decoded;
     check(decode_config(encoded.c_str(), encoded.size(), decoded) && decoded.extra.build_x && decoded.extra.tracer_style == 3 && decoded.extra.tracer_color[1] == 0.37f, "shared settings round trip with new feature fields");
     check(decoded.esp.minimap_size == 400 && decoded.radar.items && decoded.radar.bags && !decoded.radar.helicopters, "shared settings preserve radar filters and 400 pixel size");
     check(decoded.selected_visible_color[0] == 0.45f && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "shared settings preserve the visible target color");
+    check(!decoded.magic_ignore_visibility, "shared settings preserve a disabled Magic visibility bypass");
     Config old_settings;
     old_settings.esp.minimap_size = 200;
     old_settings.esp.vehicles = false;
@@ -224,6 +240,21 @@ int test_features()
     snprintf(checksum, sizeof(checksum), "%08X", hash);
     legacy += checksum;
     check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.colors.selected[2] == 0.4f && decoded.radar.bags && decoded.esp.minimap_size == 200 && decoded.selected_visible_color[0] == 0 && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "version 4 shared settings keep custom colors and radar and add cyan visible targets");
+    old_settings.selected_visible_color[0] = 0.2f;
+    unsigned char v5_bytes[4 + offsetof(Config, magic_ignore_visibility)]{5};
+    memcpy(v5_bytes + 4, &old_settings, offsetof(Config, magic_ignore_visibility));
+    legacy = "XENGINE5:";
+    hash = 2166136261u;
+    for (unsigned char byte : v5_bytes)
+    {
+        char hex[3];
+        snprintf(hex, sizeof(hex), "%02X", byte);
+        legacy += hex;
+        hash = (hash ^ byte) * 16777619u;
+    }
+    snprintf(checksum, sizeof(checksum), "%08X", hash);
+    legacy += checksum;
+    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.magic_ignore_visibility && decoded.selected_visible_color[0] == 0.2f && decoded.radar.bags, "version 5 shared settings enable Magic visibility bypass and preserve prior settings");
     using wdgs::actors::Kind;
     check(radar_vehicle_visible(settings, Kind::boat) && radar_vehicle_visible(settings, Kind::buggy) && !radar_vehicle_visible(settings, Kind::heli), "radar vehicle types can be selected independently");
     check(radar_scan_range(settings) == 5000, "automatic radar collection covers its supported range");
@@ -348,6 +379,9 @@ int test_features()
     eyes_fn.put(offsets::UObject::OuterPrivate, actor_type.addr());
     location_fn.put(offsets::UObject::OuterPrivate, scene_type.addr());
     trace_fn.put(offsets::UObject::OuterPrivate, actor_type.addr());
+    reserve_fn.put(offsets::UObject::OuterPrivate, state_type.addr());
+    commit_fn.put(offsets::UObject::OuterPrivate, state_type.addr());
+    string_fn.put(offsets::UObject::OuterPrivate, string_type.addr());
     world.put(offsets::World::GameState, state.addr());
     world.put(offsets::World::OwningGameInstance, instance.addr());
     auto local_address = local.addr();
@@ -415,14 +449,38 @@ int test_features()
     settings.extra.build_x = false;
     settings.extra.auto_join = true;
     controller.put(offsets::APlayerController_Extra::ControllerPawn, std::uintptr_t{0});
+    state.put(offsets::UObject::ObjectFlags, std::uint32_t{0x8000});
+    game_actions::test_service(settings, 11000);
+    check(reserved == 0 && committed == 0 && strcmp(game_actions::faction_status().result, "no live match") == 0, "auto faction does not send RPCs in an invalid match context");
+    state.put(offsets::UObject::ObjectFlags, std::uint32_t{0});
     game_actions::test_service(settings, 11001);
     game_actions::test_service(settings, 11200);
     check(reserved == 1 && committed == 0, "auto join can reserve on deploy screen and respects its retry interval");
+    check(reserved_tag.ComparisonIndex == 777 && reserved_tag.Number == 0 && reserve_key > 0 && reserved_ps == ps.addr(), "auto faction resolves relative and alternate paths and sends the faction tag and key on the local player state");
     game_actions::test_service(settings, 11502);
-    check(committed == 1, "auto join commits after reservation");
+    check(committed == 1 && commit_key == reserve_key && committed_ps == reserved_ps, "auto join commits the same reservation key on the same player state");
     faction.put(offsets::UWDFactionComponent::FactionTag, FNameValue{777, 0});
     game_actions::test_service(settings, 12003);
     check(reserved == 1 && committed == 1, "auto join stops requesting once already on Manticore");
+    check(strcmp(game_actions::faction_status().result, "joined Manticore") == 0, "auto faction reports success only after the faction value changes");
+    faction.put(offsets::UWDFactionComponent::FactionTag, FNameValue{});
+    game_actions::test_service(settings, 12504);
+    const auto canceled_key = reserve_key;
+    settings.extra.auto_join = false;
+    game_actions::test_service(settings, 12505);
+    settings.extra.auto_join = true;
+    game_actions::test_service(settings, 12506);
+    check(reserved == 3 && committed == 1 && reserve_key != canceled_key, "disabling the only action cancels its pending faction reservation before re-enabling");
+    game_actions::test_service(settings, 13007);
+    check(committed == 2 && commit_key == reserve_key, "re-enabled auto faction commits the new reservation");
+    game_actions::test_service(settings, 13508);
+    Object replacement_ps;
+    replacement_ps.put(offsets::UObject::ClassPrivate, state_type.addr());
+    replacement_ps.put(offsets::AWDPlayerStateSession::FactionComponent, faction.addr());
+    controller.put(offsets::APlayerController_Extra::ControllerPlayerState, replacement_ps.addr());
+    game_actions::test_service(settings, 13509);
+    check(reserved == 5 && committed == 2 && reserved_ps == replacement_ps.addr(), "replaced player state starts a fresh reservation instead of committing the previous player's key");
+    controller.put(offsets::APlayerController_Extra::ControllerPlayerState, ps.addr());
     settings.extra.auto_join = false;
     settings.extra.anti_afk = true;
     controller.put(offsets::APlayerController_Extra::ControllerPawn, pawn.addr());
@@ -457,9 +515,11 @@ int test_features()
         game_actions::update(settings, false);
         check(moved == before_callback, "Build X publication waits for the window message callback");
         check(strcmp(game_actions::build_status().delivery, "waiting for callback") == 0, "menu status exposes an undelivered Build X callback");
-        pump();
+        MSG wake{};
+        while (PeekMessageA(&wake, action_window, WM_NULL, WM_NULL, PM_REMOVE))
+            DispatchMessageA(&wake);
         position = read<FVector>(decal.addr() + 0x230);
-        check(moved == before_callback + 1 && std::fabs(position.X - 199) < 0.01 && position.Y == 200, "real message hook delivers Build X and moves the marker");
+        check(moved == before_callback + 1 && std::fabs(position.X - 199) < 0.01 && position.Y == 200, "window-filtered message pump receives the action wake and moves the marker");
         const auto delivered = game_actions::build_status();
         check(strcmp(delivered.delivery, "callback received") == 0 && strcmp(delivered.result, "X follows hammer aim") == 0, "menu status records real callback delivery and its active result");
         test_rotation.Yaw = 90;
@@ -479,6 +539,34 @@ int test_features()
         game_actions::stop();
         pump();
         check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "callback cleanup restores the X before detaching");
+        settings = {};
+        settings.extra.auto_join = true;
+        settings.aimbot.enabled = false;
+        controller.put(offsets::APlayerController_Extra::ControllerPawn, std::uintptr_t{0});
+        frame_ticks = 40000;
+        const int before_reserve = reserved, before_commit = committed;
+        game_actions::update(settings, true);
+        check(reserved == before_reserve && strcmp(game_actions::faction_status().delivery, "waiting for callback") == 0, "auto faction publishes while the menu is open and waits for its game callback");
+        while (PeekMessageA(&wake, action_window, WM_NULL, WM_NULL, PM_REMOVE))
+            DispatchMessageA(&wake);
+        check(reserved == before_reserve + 1 && strcmp(game_actions::faction_status().delivery, "callback received") == 0, "window-filtered callback reserves a faction on the deploy screen without a pawn");
+        frame_ticks = 40200;
+        game_actions::update(settings, true);
+        pump();
+        check(reserved == before_reserve + 1 && committed == before_commit, "faction callback keeps the 500 ms RPC interval");
+        frame_ticks = 40500;
+        game_actions::update(settings, true);
+        pump();
+        check(committed == before_commit + 1 && commit_key == reserve_key, "faction callback commits the reserved key");
+        faction.put(offsets::UWDFactionComponent::FactionTag, FNameValue{777, 0});
+        frame_ticks = 41000;
+        game_actions::update(settings, true);
+        pump();
+        check(reserved == before_reserve + 1 && committed == before_commit + 1 && strcmp(game_actions::faction_status().result, "joined Manticore") == 0, "faction callback stops requests after the replicated faction becomes Manticore");
+        game_actions::stop();
+        while (PeekMessageA(&wake, action_window, WM_NULL, WM_NULL, PM_REMOVE))
+            DispatchMessageA(&wake);
+        controller.put(offsets::APlayerController_Extra::ControllerPawn, pawn.addr());
         DestroyWindow(action_window);
     }
     if (action_atom)
