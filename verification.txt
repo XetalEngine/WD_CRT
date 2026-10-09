@@ -1,17 +1,18 @@
-Silent Build X comparison and d-bag label
+Aim target visibility colors and Magic Bullet investigation
 
-Compared against Ilu/spot/Game/BuildX.cpp and SDK/ProcessEventFunctions.cpp. The existing eye-ray, surface-distance, map-stride and decal offsets match the reference. SPOT uses owner-checked fallback function lookup; the rewrite previously used only one full path. Build X now resolves relative to the owning class and tries colon/dot full paths, rejecting functions owned by another class. This fixes a lookup weakness; its role in the reported live-game failure has not been confirmed.
+Selected infantry now uses cyan when visible and yellow when occluded while the Aim key is held. Box, skeleton, snapline and label share the selected color; the health bar retains its health-based palette. Both selected colors are editable in Colors > Players and reset with the palette. Existing saved custom selected colors remain the hidden color. Version 5 appends the visible selected color and preserves registry versions 1-4 and shared strings from versions 3-4. Mortar highlighting retains the previous selected color.
 
-Removed X entries are forgotten without another move, matching SPOT. Invalid or zero eye positions stop the action. State-transition diagnostics use the existing log helper and always have the WD_xetal: Build X: prefix. No new threads, timers, per-frame window polling or engine-object scans were added. Existing game-context checks and message-callback scheduling remain.
+Existing snapshot visibility is reused. When both visibility filters are off and player ESP is enabled, the updater traces only the selected player for its highlight. Rendering performs no visibility calls. No timers, threads, imports or additional entity scans were added.
 
-Renamed the DEATH BAG world label to d-bag, including the related menu/color/HUD labels and sample scenes.
+Magic runs on the uncapped update thread after entity collection, through game::tick -> aimbot::tick -> magic_bullet::retarget_all. It writes velocity toward the selected bone, not position. There is no firing-state gate: holding Aim after firing can redirect an eligible airborne round. The menu, target validity, Aim visibility filter and projectile eligibility gates still apply. Tracer trails can outlive active rounds.
 
-Validation: rebuilt both staging and Desktop DLLs and ran their regression suites. New coverage verifies class ownership, alternate lookup paths, changed aim direction/surface distance, consumed-X handling, actual WH_GETMESSAGE callback delivery on a disposable UnrealWindow, and callback restoration. Game objects and engine entry points are synthetic in these tests; live gameplay and critical hammer hits were not exercised. If the marker still stays in place, the WD_xetal: Build X: state identifies the blocked prerequisite for the next investigation.
+Added bounded WD_xetal: Magic: diagnostics on each Aim-key press with Magic enabled: blocked selection reason, or selected target followed by pool availability / counts from that scan. Counts distinguish other ownership, landed, external movement, missing flight time, invalid trajectory data, failed writes and successful redirects. The trajectory math, eligibility checks and thread placement were preserved. The report observes only that press's update; it is not continuous telemetry. A successful write is not proof that engine simulation retained it. Live logs are still required to determine why the user's upward shots do not steer downward; no live fix is claimed.
 
-Desktop release: 243200 bytes (237.5 KiB); 119 imports (unchanged).
-Regression suite: 269 checks passed, 0 failures.
-DLL SHA256: 0fe5182c844d5e2b9bbe87eea0e1dc90b74c26f8fd457ae5c5504d9fc24735e4
-Existing Desktop compiler-option warnings remain; no compilation errors.
+Validation includes rendering visible/hidden/custom-selected colors and clearing selection; version 4 migration and current settings persistence/sharing; and redirecting an upward round with 1.2 seconds of flight time to a point below it at unchanged speed. Existing ownership, landed-round, tracer, menu, transition and callback tests remain. Initial color pixel assertions sampled antialiased half-pixel edges; the test fixture was aligned to pixel centers, with no renderer changes. The final Desktop suite passed. Live gameplay and FPS were not tested. Existing compiler-option warnings remain.
+
+Desktop release: 246272 bytes (240.5 KiB); 119 imports (unchanged).
+Regression suite: 289 checks passed, 0 failures.
+DLL SHA256: 25e6a9e5c7a5dd671a33f13eeeee30476906bb626132b58289dd289ced4ec991
 
 PASS: no snapshot displayed before first publication
 PASS: complete initial snapshot handed to renderer
@@ -24,7 +25,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 422
+Concurrent snapshot reads: 274
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -79,7 +80,9 @@ PASS: opposite FOV hotkeys together do not change the setting
 PASS: requested feature defaults
 PASS: shared settings round trip with new feature fields
 PASS: shared settings preserve radar filters and 400 pixel size
+PASS: shared settings preserve the visible target color
 PASS: version 3 shared settings migrate radar options and retired feet labels
+PASS: version 4 shared settings keep custom colors and radar and add cyan visible targets
 PASS: radar vehicle types can be selected independently
 PASS: automatic radar collection covers its supported range
 PASS: manual radar collection respects selected range
@@ -95,6 +98,10 @@ PASS: silent projectile redirect accepts local infantry round
 PASS: redirect preserves projectile speed
 PASS: projectile redirect accepts local vehicle round
 PASS: landed projectiles are not modified
+PASS: upward projectile accepts a target below it
+PASS: upward projectile reverses downward while preserving speed
+PASS: externally controlled projectiles are not modified
+PASS: projectiles without flight time are not modified
 PASS: 1000 rounds stay within the fixed tracer budget
 PASS: expired tracers clear without new shots
 PASS: reused projectile slot starts a separate trail
@@ -113,8 +120,11 @@ PASS: anti AFK does not turn immediately when enabled
 PASS: anti AFK acts only after its interval
 PASS: create disposable Unreal window for action callback
 PASS: Build X publication waits for the window message callback
+PASS: menu status exposes an undelivered Build X callback
 PASS: real message hook delivers Build X and moves the marker
+PASS: menu status records real callback delivery and its active result
 PASS: message callback follows a changed hammer aim point
+PASS: opening the menu restores the X but preserves its last active diagnostic
 PASS: callback cleanup restores the X before detaching
 PASS: render camera advances without changing or waiting for entity publication
 PASS: late camera sample never calls native ProcessEvent
@@ -140,11 +150,13 @@ PASS: memory checks do not depend on local exception handlers
 PASS: settings validation
 PASS: save isolated test settings
 PASS: settings, palette and radar position round trip
+PASS: visible target color survives save and load
 PASS: version 1 migration keeps custom settings and upgrades unchanged colors
 PASS: truncated version 2 settings are rejected
 PASS: version 2 migration supplies new defaults without overwriting old settings
 PASS: version 3 migration doubles the old default radar and preserves feature settings
-PASS: save version 4 radar categories
+PASS: version 4 keeps custom hidden target color and defaults visible targets to cyan
+PASS: save version 5 settings
 PASS: radar filters survive save and load
 PASS: bad settings leave current state unchanged
 PASS: stationary trajectory
@@ -158,7 +170,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.246 ms
+Busy-GPU stage 1 submission: 0.370 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -167,7 +179,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.282 ms
+Busy-GPU stage 2 submission: 0.303 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -176,7 +188,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.239 ms
+Busy-GPU stage 3 submission: 0.220 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -212,6 +224,11 @@ PASS: capture menu tab
 PASS: begin menu frame
 PASS: present menu frame
 PASS: capture menu tab
+PASS: begin Build X diagnostic menu frame
+PASS: Build X toggle changes the setting before callback delivery
+PASS: capture the Build X toggle frame before its settled state
+PASS: begin settled Build X diagnostic menu frame
+PASS: Build X enabled button and diagnostic labels render together
 PASS: begin toggle frame
 PASS: toggle changes actual setting
 PASS: begin unchanged toggle frame
@@ -270,6 +287,10 @@ PASS: begin box geometry frame
 PASS: box uses head/root height and half-height width without skeleton drawing
 PASS: begin box geometry frame
 PASS: box uses head/root height and half-height width without skeleton drawing
+PASS: visible selected player is cyan
+PASS: hidden selected player is yellow even with ESP visibility filtering off
+PASS: visible target uses the picked color
+PASS: releasing target selection restores the normal player color
 PASS: begin empty world frame
 PASS: world transition clears previous drawing
 PASS: drawing retains the dimensions read at initialization
@@ -277,7 +298,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.608 ms CPU average, 15.369 ms max; 35.097 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.536 ms CPU average, 12.077 ms max; 45.981 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -291,4 +312,4 @@ PASS: external presentation preserves pixels and alpha
 
 FullName                          Length
 --------                          ------
-C:\xampp\htdocs\downloads\dll.dll 243200
+C:\xampp\htdocs\downloads\dll.dll 246272

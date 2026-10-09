@@ -1,6 +1,7 @@
 #include "menu.h"
 #include "config.h"
 #include "overlay.h"
+#include "game_actions.h"
 
 namespace
 {
@@ -355,7 +356,20 @@ void menu::draw()
         toggle(1, 0, "Auto join Manticore", config.extra.auto_join, "Automatically requests and confirms Manticore\nwhen the faction selection screen is available.");
         toggle(1, 1, "Anti AFK", config.extra.anti_afk, "Makes a tiny aim movement every five seconds on foot,\nwhile the menu is closed and aim is inactive.");
         toggle(1, 2, "Active features HUD", config.extra.feature_hud, "Shows a compact list of enabled features\nat the top left of the screen.");
+        const bool previous_build = config.extra.build_x;
         toggle(1, 3, "Silent Build X", config.extra.build_x, "Moves nearby build markers to your aimed surface.\nRequires the hammer; restores them when disabled.");
+        if (previous_build != config.extra.build_x)
+            log("Build X: menu toggle %s", config.extra.build_x ? "ON" : "OFF");
+        if (config.extra.build_x)
+        {
+            const auto build = game_actions::build_status();
+            char line[128];
+            snprintf(line, sizeof(line), "Build X: %s", build.delivery);
+            text(x + 334, y + 224, line, muted, 13);
+            snprintf(line, sizeof(line), "Last: %s", build.result);
+            text(x + 334, y + 246, line, muted, 13);
+            hint(x + 334, y + 224, 292, 42, "Callback delivery and the last active result.\nClose the menu to run; reopen it to read the result.");
+        }
         text(x + 18, y + 328, "Tracer colors: Colors > Effects", muted);
         break;
     }
@@ -373,13 +387,13 @@ void menu::draw()
             const char* name;
             float* value;
         };
-        Entry players[]{{"Visible box", e.visible_color}, {"Hidden box", e.not_visible_color}, {"Team", c.team}, {"Dead", c.dead}, {"Selected", c.selected}, {"Visible bones", c.skeleton_visible}, {"Hidden bones", c.skeleton_hidden}, {"Visible text", c.name_visible}, {"Hidden text", c.name_hidden}, {"Full health", c.health_full}, {"Low health", c.health_low}};
+        Entry players[]{{"Visible box", e.visible_color}, {"Hidden box", e.not_visible_color}, {"Team", c.team}, {"Dead", c.dead}, {"Selected hidden", c.selected}, {"Selected visible", config.selected_visible_color}, {"Visible bones", c.skeleton_visible}, {"Hidden bones", c.skeleton_hidden}, {"Visible text", c.name_visible}, {"Hidden text", c.name_hidden}, {"Full health", c.health_full}, {"Low health", c.health_low}};
         Entry world[]{{"Vehicles", e.vehicle_color}, {"Items", e.loot_color}, {"SAM vehicles", c.sam}, {"Explosives", config.extra.explosive_color}, {"d-bag", config.extra.bag_color}};
         Entry effects[]{{"Mortar", c.mortar}, {"Prediction", c.prediction}, {"Aim FOV", c.fov}, {"SAM warning", c.warning}, {"Box shading", c.box_fill}, {"Label shading", c.label_fill}, {"Line glow", c.glow}, {"Tracer start", config.extra.tracer_color}, {"Tracer end", config.extra.tracer_end_color}};
         Entry radar[]{{"Background", c.radar_fill}, {"Grid", c.radar_grid}, {"Border", c.radar_border}, {"Local marker", c.radar_local}};
         Entry menu[]{{"Accent", c.menu_accent}, {"Background", c.menu_fill}, {"Labels", c.menu_text}, {"Values", c.menu_value}};
         Entry* entries[]{players, world, effects, radar, menu};
-        const int counts[]{11, 5, 9, 4, 4};
+        const int counts[]{12, 5, 9, 4, 4};
         text(x + 18, y + 121, "Color", color(c.menu_text));
         if (button(x + 146, y + 118, 164, entries[group][selected].name, false, "Selects the element whose color you want to edit.\nClick to cycle; use the channel sliders below."))
             selected = (selected + 1) % counts[group];
@@ -397,6 +411,7 @@ void menu::draw()
         {
             const Config defaults;
             c = defaults.colors;
+            memcpy(config.selected_visible_color, defaults.selected_visible_color, sizeof(config.selected_visible_color));
             memcpy(config.extra.tracer_color, defaults.extra.tracer_color, sizeof(config.extra.tracer_color));
             memcpy(config.extra.tracer_end_color, defaults.extra.tracer_end_color, sizeof(config.extra.tracer_end_color));
             memcpy(config.extra.explosive_color, defaults.extra.explosive_color, sizeof(config.extra.explosive_color));

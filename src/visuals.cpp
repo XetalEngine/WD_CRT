@@ -62,7 +62,7 @@ namespace
             }
     }
 
-    void player(const game::ProjectedPlayer& p, std::uintptr_t selected, const visual_math::Projection* projection)
+    void player(const game::ProjectedPlayer& p, std::uintptr_t selected, bool aim_selection, const visual_math::Projection* projection)
     {
         const auto& e = config.esp;
         const auto& data = p.player;
@@ -99,7 +99,7 @@ namespace
         const float left = center - width * 0.5f, bottom = top + height;
         const auto& palette = config.colors;
         const bool targeted = selected && p.actor_addr == selected;
-        const Color c = targeted ? color(palette.selected) : player_color(data, e.visible_color, e.not_visible_color);
+        const Color c = targeted ? color(aim_selection && data.isVisible ? config.selected_visible_color : palette.selected) : player_color(data, e.visible_color, e.not_visible_color);
         if (e.lines)
             outlined_line(screen_width * 0.5f, static_cast<float>(screen_height), screen.x, screen.y, c);
         if (e.box)
@@ -424,10 +424,11 @@ void visuals::draw(const game::Snapshot& snapshot, const CameraIPC* camera)
         feature_hud(snapshot);
     const Color mortar_color = color(config.colors.mortar), warning_color = color(config.colors.warning);
     const Color prediction = color(config.colors.prediction);
-    const auto selected = snapshot.mortar.valid && config.mortar.mortar_aim ? snapshot.mortar.selected_actor : snapshot.aim_selected_actor;
+    const bool mortar_selection = snapshot.mortar.valid && config.mortar.mortar_aim;
+    const auto selected = mortar_selection ? snapshot.mortar.selected_actor : snapshot.aim_selected_actor;
     if (config.esp.enabled)
         for (const auto& p : snapshot.players)
-            player(p, selected, fresh);
+            player(p, selected, !mortar_selection, fresh);
     if (config.esp.vehicles)
         for (const auto& v : snapshot.vehicles)
             if (v.actor.distance_meters <= config.esp.vehicle_distance)

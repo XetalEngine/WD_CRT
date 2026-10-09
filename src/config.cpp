@@ -13,7 +13,7 @@ namespace
 #endif
     struct Stored
     {
-        DWORD version = 4;
+        DWORD version = 5;
         Config data;
     };
     static_assert(offsetof(Config, colors) == 184, "Keep the version 1 settings prefix intact");
@@ -91,7 +91,7 @@ void validate_config(Config& value)
         for (int i = 0; i < 4; ++i)
             limit(color[i], 0, 1, 1);
     auto& c = value.colors;
-    for (float* color : {c.team, c.dead, c.selected, c.skeleton_visible, c.skeleton_hidden, c.name_visible, c.name_hidden, c.health_full, c.health_low, c.sam, c.mortar, c.prediction, c.fov, c.warning, c.box_fill, c.label_fill, c.glow, c.radar_fill, c.radar_grid, c.radar_border, c.radar_local, c.menu_accent, c.menu_fill, c.menu_text, c.menu_value})
+    for (float* color : {c.team, c.dead, c.selected, value.selected_visible_color, c.skeleton_visible, c.skeleton_hidden, c.name_visible, c.name_hidden, c.health_full, c.health_low, c.sam, c.mortar, c.prediction, c.fov, c.warning, c.box_fill, c.label_fill, c.glow, c.radar_fill, c.radar_grid, c.radar_border, c.radar_local, c.menu_accent, c.menu_fill, c.menu_text, c.menu_value})
         for (int i = 0; i < 4; ++i)
             limit(color[i], 0, 1, 1);
     value.aimbot.bone = std::clamp(value.aimbot.bone, 0, 4);
@@ -127,7 +127,7 @@ void validate_config(Config& value)
 bool save_config()
 {
     validate_config(config);
-    Stored stored{4, config};
+    Stored stored{5, config};
     HKEY opened;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, key, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &opened, nullptr) != ERROR_SUCCESS)
         return false;
@@ -160,7 +160,11 @@ bool load_config()
     {
         // Retain the version 3 feature settings and supply radar filters.
     }
-    else if (stored.version != 4 || size != sizeof(stored))
+    else if (stored.version == 4 && size == offsetof(Stored, data) + offsetof(Config, selected_visible_color))
+    {
+        // Keep the previous selected color for hidden targets; visible defaults to cyan.
+    }
+    else if (stored.version != 5 || size != sizeof(stored))
         return false;
     if (stored.version < 4)
         migrate_radar(stored.data);
@@ -171,11 +175,11 @@ bool load_config()
 
 std::string encode_config(const Config& value)
 {
-    Stored stored{4, value};
+    Stored stored{5, value};
     validate_config(stored.data);
     const auto bytes = reinterpret_cast<const unsigned char*>(&stored);
     constexpr char hex[] = "0123456789ABCDEF";
-    std::string result = "XENGINE4:";
+    std::string result = "XENGINE5:";
     result.reserve(9 + sizeof(stored) * 2 + 8);
     std::uint32_t hash = 2166136261u;
     for (std::size_t i = 0; i < sizeof(stored); ++i)
@@ -194,9 +198,15 @@ bool decode_config(const char* text, std::size_t length, Config& value)
 {
     if (!text || length < 17)
         return false;
-    const bool legacy = memcmp(text, "XENGINE3:", 9) == 0;
-    const auto stored_size = legacy ? offsetof(Stored, data) + offsetof(Config, radar) : sizeof(Stored);
-    if ((!legacy && memcmp(text, "XENGINE4:", 9)) || length != 9 + stored_size * 2 + 8)
+    if (memcmp(text, "XENGINE", 7) || text[8] != ':' || text[7] < '3' || text[7] > '5')
+        return false;
+    const DWORD version = text[7] - '0';
+    std::size_t stored_size = sizeof(Stored);
+    if (version == 3)
+        stored_size = offsetof(Stored, data) + offsetof(Config, radar);
+    else if (version == 4)
+        stored_size = offsetof(Stored, data) + offsetof(Config, selected_visible_color);
+    if (length != 9 + stored_size * 2 + 8)
         return false;
     const auto digit = [](char c)
     { return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10
@@ -219,9 +229,9 @@ bool decode_config(const char* text, std::size_t length, Config& value)
             return false;
         expected = (expected << 4) | d;
     }
-    if (hash != expected || stored.version != (legacy ? 3 : 4))
+    if (hash != expected || stored.version != version)
         return false;
-    if (legacy)
+    if (version < 4)
         migrate_radar(stored.data);
     validate_config(stored.data);
     value = stored.data;

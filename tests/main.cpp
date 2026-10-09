@@ -144,9 +144,11 @@ int main(int argc, char** argv)
     config.colors.radar_grid[2] = 0.35f;
     config.esp.minimap_x = 320;
     config.esp.minimap_y = 140;
+    config.selected_visible_color[0] = 0.4f;
     check(save_config(), "save isolated test settings");
     config = {};
     check(load_config() && config.aimbot.fov == 135 && config.esp.visible_color[1] == 0.25f && config.colors.radar_grid[2] == 0.35f && config.esp.minimap_x == 320 && config.esp.minimap_y == 140, "settings, palette and radar position round trip");
+    check(config.selected_visible_color[0] == 0.4f, "visible target color survives save and load");
     unsigned char legacy[188]{};
     const DWORD version = 1;
     memcpy(legacy, &version, sizeof(version));
@@ -177,7 +179,13 @@ int main(int argc, char** argv)
     check(load_config() && config.esp.minimap_size == 400 && config.esp.minimap_x == -1 && config.esp.minimap_y == -1 && config.extra.build_x, "version 3 migration doubles the old default radar and preserves feature settings");
     config.radar.items = true;
     config.radar.helicopters = false;
-    check(save_config(), "save version 4 radar categories");
+    config.colors.selected[0] = 0.6f;
+    unsigned char v4[4 + offsetof(Config, selected_visible_color)]{4};
+    memcpy(v4 + 4, &config, offsetof(Config, selected_visible_color));
+    RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, v4, sizeof(v4));
+    config.selected_visible_color[0] = 1;
+    check(load_config() && config.radar.items && !config.radar.helicopters && config.colors.selected[0] == 0.6f && config.selected_visible_color[0] == 0 && config.selected_visible_color[1] == 1 && config.selected_visible_color[2] == 1, "version 4 keeps custom hidden target color and defaults visible targets to cyan");
+    check(save_config(), "save version 5 settings");
     config.radar.items = false;
     config.radar.helicopters = true;
     check(load_config() && config.radar.items && !config.radar.helicopters, "radar filters survive save and load");
@@ -267,6 +275,19 @@ int main(int argc, char** argv)
         swprintf_s(path, L"build/menu-%d.bmp", tab);
         check(overlay::capture(path), "capture menu tab");
     }
+    const bool saved_build_x = config.extra.build_x;
+    config.extra.build_x = false;
+    menu::test_input(5, 665, 250, true);
+    check(begin_frame(), "begin Build X diagnostic menu frame");
+    menu::draw();
+    check(config.extra.build_x, "Build X toggle changes the setting before callback delivery");
+    overlay::end();
+    check(overlay::capture(L"build/build-x-toggle.bmp"), "capture the Build X toggle frame before its settled state");
+    menu::test_input(5, 0, 0, false);
+    check(begin_frame(), "begin settled Build X diagnostic menu frame");
+    menu::draw();
+    check(overlay::end() && overlay::capture(L"build/build-x-status.bmp"), "Build X enabled button and diagnostic labels render together");
+    config.extra.build_x = saved_build_x;
     menu::test_input(0, 340, 160, true);
     check(begin_frame(), "begin toggle frame");
     menu::draw();
@@ -522,6 +543,29 @@ int main(int argc, char** argv)
         swprintf_s(path, L"build/box-%d.bmp", style);
         check(overlay::capture(path) && pixel(path, 460, 280, 10, 10, 21, 138) && pixel(path, 470, 280, 0, 0, 0, 0), "box uses head/root height and half-height width without skeleton drawing");
     }
+    scene.mortar.valid = false;
+    scene.aim_selected_actor = scene.players[0].actor_addr;
+    scene.players[0].bones[BONE_HEAD] = {420.5f, 200.5f, true};
+    scene.players[0].bones[BONE_ROOT] = {420.5f, 380.5f, true};
+    const auto capture_target = [&]()
+    {
+        if (!begin_frame())
+            return false;
+        visuals::draw(scene);
+        overlay::end();
+        return overlay::capture(L"build/target-color.bmp");
+    };
+    scene.players[0].player.isVisible = true;
+    check(capture_target() && pixel(L"build/target-color.bmp", 420, 200, 0, 255, 255, 255), "visible selected player is cyan");
+    scene.players[0].player.isVisible = false;
+    config.esp.visible_check = false;
+    check(capture_target() && pixel(L"build/target-color.bmp", 420, 200, 255, 255, 0, 255), "hidden selected player is yellow even with ESP visibility filtering off");
+    scene.players[0].player.isVisible = true;
+    config.selected_visible_color[0] = 1;
+    config.selected_visible_color[1] = 0;
+    check(capture_target() && pixel(L"build/target-color.bmp", 420, 200, 255, 0, 255, 255), "visible target uses the picked color");
+    scene.aim_selected_actor = 0;
+    check(capture_target() && pixel(L"build/target-color.bmp", 420, 200, 0, 255, 0, 255), "releasing target selection restores the normal player color");
     config = scene_settings;
     check(begin_frame(), "begin empty world frame");
     scene.valid = false;

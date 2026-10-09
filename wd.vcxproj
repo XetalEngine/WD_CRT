@@ -106,6 +106,7 @@
     <ClInclude Include="src\weapon_stats.h" />
     <ClInclude Include="src\world_actor_snapshot.h" />
     <ClInclude Include="ultraglobal.h" />
+    <ClInclude Include="xor.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

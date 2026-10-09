@@ -12,8 +12,10 @@ namespace
         HHOOK cleanup = nullptr;
     } request;
     SRWLOCK mailbox = SRWLOCK_INIT;
+    game_actions::BuildStatus build_report;
     bool pending = false;
     bool was_enabled = false;
+    bool was_build = false;
     HHOOK hook = nullptr;
     DWORD message_thread = 0;
     ULONGLONG next_publish = 0, next_install = 0;
@@ -37,12 +39,18 @@ namespace
     } spots[24];
     unsigned pass = 0;
 
-    void build_state(const char* state)
+    void build_state(const char* state, bool remember = true)
     {
         static const char* previous = nullptr;
         if (state != previous)
         {
             previous = state;
+            if (remember)
+            {
+                AcquireSRWLockExclusive(&mailbox);
+                build_report.result = state;
+                ReleaseSRWLockExclusive(&mailbox);
+            }
             log("Build X: %s", state);
         }
     }
@@ -442,7 +450,7 @@ namespace
         {
             restore();
             if (input.build)
-                build_state(input.menu ? "paused while menu is open" : "requires being on foot");
+                build_state(input.menu ? "paused while menu is open" : "requires being on foot", !input.menu);
         }
         if (!input.afk || input.menu || seated || input.aiming)
         {
@@ -477,6 +485,8 @@ namespace
             {
                 input = request;
                 pending = false;
+                if (input.build)
+                    build_report.delivery = "callback received";
             }
             ReleaseSRWLockExclusive(&mailbox);
         }
@@ -506,16 +516,44 @@ namespace
     }
 } // namespace
 
+game_actions::BuildStatus game_actions::build_status()
+{
+    // Render-thread cache: never wait for the action thread to draw the menu.
+    static BuildStatus cached;
+    if (TryAcquireSRWLockExclusive(&mailbox))
+    {
+        cached = build_report;
+        ReleaseSRWLockExclusive(&mailbox);
+    }
+    return cached;
+}
+
 void game_actions::update(const Config& settings, bool menu_visible)
 {
+    if (settings.extra.build_x != was_build)
+    {
+        was_build = settings.extra.build_x;
+        AcquireSRWLockExclusive(&mailbox);
+        build_report.delivery = was_build ? "waiting for callback" : "off";
+        ReleaseSRWLockExclusive(&mailbox);
+        log("Build X: update received %s", was_build ? "ON" : "OFF");
+    }
     const bool enabled = settings.extra.build_x || settings.extra.auto_join || settings.extra.anti_afk;
     if (!hook && enabled && frame_ticks >= next_install)
     {
         next_install = frame_ticks + 5000;
+        message_thread = 0;
         EnumWindows(find_window, reinterpret_cast<LPARAM>(&message_thread));
         if (message_thread)
             hook = SetWindowsHookExA(WH_GETMESSAGE, on_message, nullptr, message_thread);
         log(hook ? "game actions ready" : "game actions unavailable; retrying");
+        if (settings.extra.build_x)
+        {
+            AcquireSRWLockExclusive(&mailbox);
+            build_report.delivery = hook ? "waiting for callback" : message_thread ? "hook install failed"
+                                                                                   : "game window missing";
+            ReleaseSRWLockExclusive(&mailbox);
+        }
     }
     if (!enabled && !was_enabled)
         return;
@@ -529,8 +567,14 @@ void game_actions::update(const Config& settings, bool menu_visible)
     request = {settings.extra.build_x, settings.extra.auto_join, settings.extra.anti_afk, aiming, menu_visible, frame_ticks};
     pending = true;
     ReleaseSRWLockExclusive(&mailbox);
-    if (wake)
-        PostThreadMessageW(message_thread, WM_NULL, 0, 0);
+    if (wake && !PostThreadMessageW(message_thread, WM_NULL, 0, 0))
+    {
+        AcquireSRWLockExclusive(&mailbox);
+        pending = false; // Allow the next publication to retry a failed wake.
+        if (settings.extra.build_x)
+            build_report.delivery = "wake post failed";
+        ReleaseSRWLockExclusive(&mailbox);
+    }
 }
 
 void game_actions::stop()

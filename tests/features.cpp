@@ -182,10 +182,12 @@ int test_features()
     settings.extra.build_x = true;
     settings.radar.items = settings.radar.bags = true;
     settings.radar.helicopters = false;
+    settings.selected_visible_color[0] = 0.45f;
     const auto encoded = encode_config(settings);
     Config decoded;
     check(decode_config(encoded.c_str(), encoded.size(), decoded) && decoded.extra.build_x && decoded.extra.tracer_style == 3 && decoded.extra.tracer_color[1] == 0.37f, "shared settings round trip with new feature fields");
     check(decoded.esp.minimap_size == 400 && decoded.radar.items && decoded.radar.bags && !decoded.radar.helicopters, "shared settings preserve radar filters and 400 pixel size");
+    check(decoded.selected_visible_color[0] == 0.45f && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "shared settings preserve the visible target color");
     Config old_settings;
     old_settings.esp.minimap_size = 200;
     old_settings.esp.vehicles = false;
@@ -206,6 +208,22 @@ int test_features()
     snprintf(checksum, sizeof(checksum), "%08X", hash);
     legacy += checksum;
     check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.extra.build_x && decoded.extra.player_text == 0 && decoded.esp.minimap_size == 400 && !decoded.radar.helicopters && !decoded.radar.ground && !decoded.radar.items, "version 3 shared settings migrate radar options and retired feet labels");
+    old_settings.colors.selected[2] = 0.4f;
+    old_settings.radar.bags = true;
+    unsigned char v4_bytes[4 + offsetof(Config, selected_visible_color)]{4};
+    memcpy(v4_bytes + 4, &old_settings, offsetof(Config, selected_visible_color));
+    legacy = "XENGINE4:";
+    hash = 2166136261u;
+    for (unsigned char byte : v4_bytes)
+    {
+        char hex[3];
+        snprintf(hex, sizeof(hex), "%02X", byte);
+        legacy += hex;
+        hash = (hash ^ byte) * 16777619u;
+    }
+    snprintf(checksum, sizeof(checksum), "%08X", hash);
+    legacy += checksum;
+    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.colors.selected[2] == 0.4f && decoded.radar.bags && decoded.esp.minimap_size == 200 && decoded.selected_visible_color[0] == 0 && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "version 4 shared settings keep custom colors and radar and add cyan visible targets");
     using wdgs::actors::Kind;
     check(radar_vehicle_visible(settings, Kind::boat) && radar_vehicle_visible(settings, Kind::buggy) && !radar_vehicle_visible(settings, Kind::heli), "radar vehicle types can be selected independently");
     check(radar_scan_range(settings) == 5000, "automatic radar collection covers its supported range");
@@ -251,6 +269,17 @@ int test_features()
     round.landed = true;
     check(!wdgs::magic_bullet::test_retarget(round, {100, 1000, 0}, 10, 12), "landed projectiles are not modified");
     round.landed = false;
+    round.location = {100, 0, 1000};
+    round.velocity = {0, 0, 10000};
+    round.flight_time = 1.2;
+    check(wdgs::magic_bullet::test_retarget(round, {100, 0, 100}, 10, 12), "upward projectile accepts a target below it");
+    const auto downward = read<FVector>(round.address + wdgs::projectile_subsystem::velocity_offset);
+    check(downward.X == 0 && downward.Y == 0 && downward.Z == -10000, "upward projectile reverses downward while preserving speed");
+    round.external_movement = 1;
+    check(!wdgs::magic_bullet::test_retarget(round, {100, 0, 100}, 10, 12), "externally controlled projectiles are not modified");
+    round.external_movement = 0;
+    round.flight_time = 0;
+    check(!wdgs::magic_bullet::test_retarget(round, {100, 0, 100}, 10, 12), "projectiles without flight time are not modified");
     tracers::reset();
     for (unsigned i = 0; i < 1000; ++i)
     {
@@ -427,9 +456,12 @@ int test_features()
         const int before_callback = moved;
         game_actions::update(settings, false);
         check(moved == before_callback, "Build X publication waits for the window message callback");
+        check(strcmp(game_actions::build_status().delivery, "waiting for callback") == 0, "menu status exposes an undelivered Build X callback");
         pump();
         position = read<FVector>(decal.addr() + 0x230);
         check(moved == before_callback + 1 && std::fabs(position.X - 199) < 0.01 && position.Y == 200, "real message hook delivers Build X and moves the marker");
+        const auto delivered = game_actions::build_status();
+        check(strcmp(delivered.delivery, "callback received") == 0 && strcmp(delivered.result, "X follows hammer aim") == 0, "menu status records real callback delivery and its active result");
         test_rotation.Yaw = 90;
         hit_fraction = 0.6f;
         frame_ticks += 16;
@@ -437,6 +469,13 @@ int test_features()
         pump();
         position = read<FVector>(decal.addr() + 0x230);
         check(std::fabs(position.X - 100) < 0.01 && std::fabs(position.Y - 349) < 0.01, "message callback follows a changed hammer aim point");
+        frame_ticks += 16;
+        game_actions::update(settings, true);
+        pump();
+        check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01 && strcmp(game_actions::build_status().result, "X follows hammer aim") == 0, "opening the menu restores the X but preserves its last active diagnostic");
+        frame_ticks += 16;
+        game_actions::update(settings, false);
+        pump();
         game_actions::stop();
         pump();
         check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "callback cleanup restores the X before detaching");

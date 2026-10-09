@@ -152,6 +152,9 @@ struct Config
         bool explosives = false;
         bool bags = false;
     } radar;
+
+    // Version 5: append to preserve older saved settings.
+    float selected_visible_color[4] = {0, 1, 1, 1};
 };
 
 namespace wdgs::actors

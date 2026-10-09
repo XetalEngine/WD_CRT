@@ -15,6 +15,7 @@ namespace
     std::uintptr_t g_locked_actor = 0;
     std::uintptr_t g_magic_dead_actor = 0;
     double g_magic_dead_since{};
+    bool g_magic_reported = false;
     constexpr float kMagicShortRangeMeters = 50.f;
     // Helpers
     int bone_slot_for_config(int cfg_bone)
@@ -112,6 +113,7 @@ int aimbot::target_bone(const game::ProjectedPlayer& player, int configured)
 
 void aimbot::reset()
 {
+    g_magic_reported = false;
     g_locked_actor = 0;
     g_magic_dead_actor = 0;
     g_magic_dead_since = {};
@@ -134,6 +136,8 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         reset();
         return;
     }
+    const bool report = settings.magic_bullet && !g_magic_reported;
+    g_magic_reported = settings.magic_bullet;
 
     const double now = frame_time;
     float delta_time = static_cast<float>(now - g_last_tick);
@@ -144,10 +148,18 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     int aim_bone = bone_slot_for_config(settings.bone);
     float aim_fov = settings.fov;
     if (aim_bone < 0 || aim_bone >= BONE_COUNT || !std::isfinite(aim_fov) || aim_fov <= 0.f)
+    {
+        if (report)
+            log("Magic: invalid bone or FOV setting");
         return;
+    }
 
     if (settings.mode < 0 || settings.mode > 2)
+    {
+        if (report)
+            log("Magic: invalid target mode");
         return;
+    }
     // Target selection
     auto valid_target = [&](const game::ProjectedPlayer& pp, bool require_fov)
     {
@@ -190,7 +202,11 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
 
             const float elapsed = static_cast<float>(now - g_magic_dead_since);
             if (elapsed < delay_off)
+            {
+                if (report)
+                    log("Magic: waiting for dead-target delay");
                 return;
+            }
         }
         else
         {
@@ -256,6 +272,8 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
 
         if (!best)
         {
+            if (report)
+                log("Magic: no eligible target in FOV");
             if (settings.magic_bullet)
                 wdgs::magic_bullet::probe(camera.location);
             return;
@@ -269,17 +287,25 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     // the same target on every aim tick.
     if (settings.visible_check && !vehicle_aim.valid && !best->player.isVisible)
     {
+        if (report)
+            log("Magic: selected target blocked by Aim visibility check");
         if (settings.magic_bullet)
             wdgs::magic_bullet::probe(camera.location);
         return;
     }
     aim_bone = target_bone(*best, settings.bone);
     if (aim_bone < 0)
+    {
+        if (report)
+            log("Magic: selected target has no projected bone");
         return;
+    }
     // Aim point & prediction
     const FVector& bone_pos = best->player.bones[aim_bone];
     if (bone_pos.X == 0.0 && bone_pos.Y == 0.0 && bone_pos.Z == 0.0)
     {
+        if (report)
+            log("Magic: selected target has no bone position");
         if (settings.magic_bullet)
             wdgs::magic_bullet::probe(camera.location);
         return;
@@ -335,7 +361,9 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
             (std::isfinite(best->player.distance) && best->player.distance < kMagicShortRangeMeters)
                 ? bone_pos
                 : aim_point;
-        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !settings.magic_bullet);
+        if (report)
+            log("Magic: target=%p bone=%d visible=%d on update thread", reinterpret_cast<void*>(best->actor_addr), aim_bone, best->player.isVisible);
+        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !settings.magic_bullet, report);
     }
 
     // Silent aim redirects a new local round once; Magic Bullet keeps steering it.
