@@ -158,6 +158,9 @@ struct Config
 
     // Version 6: Magic can steer toward an occluded selected target.
     bool magic_ignore_visibility = true;
+
+    // Version 7: Silent handles nearer targets when both projectile modes are on.
+    float magic_min_distance = 0.f;
 };
 
 namespace wdgs::actors

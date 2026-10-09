@@ -1,16 +1,16 @@
-Menu refresh
+Magic minimum distance for combined Silent + Magic
 
-Preserved the 660x452 menu, all eight tabs, the two-column layout, control positions, click areas, hotkeys and settings behavior. Added section headings, subtle group dividers, a column separator, a top accent and a separate footer. Selected tabs and enabled toggles use a dark accent tint, a thin accent strip and accent-colored text. Hover highlights the border immediately using existing mouse coordinates. The World tab's spare column points to radar filters and world colors; optional action diagnostics have their own headings.
+Aim > Projectiles now shows Magic min dist (m) when both Silent aim and Magic bullet are enabled. Range is 0-1000 meters; default is 0 to preserve current behavior. Below the threshold, Silent redirects each eligible round once with its existing prediction and visibility rules. At or above the threshold, Magic continuously steers to the current selected bone with its own visibility-bypass setting. Magic-only and Silent-only ignore this combined-mode threshold. A Silent round can enter Magic steering when the target crosses the threshold. Returning below it stops continuous steering without redirecting an already-handled round a second time. Magic's dead-target delay applies only at Magic distances.
 
-Uses existing drawing primitives, cached Windows Tahoma layouts and configurable menu colors. No fonts or images are embedded. No animation, timer, polling, new Windows imports or gameplay/thread changes. Added drawing only runs while the menu is open.
+Uses the existing cached target distance and settings snapshot on the update thread. No new actor scans, distance calculations, native game calls, timers, hooks, threads or imports. The projectile steering math and ownership/flight guards are unchanged. Tests' synthetic key and projectile-subsystem setup helpers compile only under WD_TEST and are absent from the DLL. Diagnostic messages retain the WD_xetal: filter and remain bounded per aim-key hold.
 
-Validation: staging regression suite passed, followed by a Desktop build and passing regression suite after final polish. Existing menu input checks cover retained clicks, consecutive controls, held-button suppression and sliders. Captured and visually reviewed all eight tabs plus the combined optional-action diagnostics. Capture cursors were moved outside the menu so tooltips do not obscure the layout. Source diff passes whitespace checks. Existing Desktop compiler-option warnings remain. Live gameplay and FPS were not measured.
+Config version 7 appends one float and supports registry versions 1-6 and shared strings from versions 3-6. Older settings default to 0 m without changing saved choices. Save/Load and Copy/Paste preserve the new value. Invalid values are defaulted or clamped. The slider reuses the existing control and spare row without moving other controls, and retains its value while hidden.
 
-Previous Magic ignore visibility and auto-faction fixes remain included and unchanged. Their separate notes are in build/magic-visibility-notes.txt and build/faction-notes.txt.
+Validation: regression suite passed, including actual aim selection/retargeting against a synthetic projectile pool below, at and above the threshold; once-per-round behavior, threshold crossings, raw-bone vs prediction targeting, visibility gates, single-mode behavior, 0 m behavior, vehicle targets and menu gating. Settings tests cover version 6 migration, current persistence/sharing, range validation and slider interaction/visibility. The slider and tooltip capture was visually checked. The same reviewed source was copied to the Desktop project and its release DLL rebuilt successfully; imports were audited and diff whitespace checked. Existing Desktop compiler-option warnings remain. The user confirmed the preceding Magic implementation works in-game; the new threshold has not been tested in a live match or benchmarked for FPS.
 
-Desktop release: 251392 bytes (245.5 KiB), 119 imports unchanged.
-Regression suite: 304 checks passed, 0 failures.
-DLL SHA256: 78bd8d4d5dd2e4c1e657dc963b9ef2c0541ed7c5b2f17b52aac845966aab389c
+Desktop release: 251904 bytes (246.0 KiB), 119 imports unchanged.
+Regression suite: 328 checks passed, 0 failures.
+DLL SHA256: 359560d4b0072d3e954deccd5922b15c13dcfe9fd735e15dc0f41bb5834f0d1a
 
 PASS: no snapshot displayed before first publication
 PASS: complete initial snapshot handed to renderer
@@ -23,7 +23,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 212
+Concurrent snapshot reads: 217
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -80,9 +80,11 @@ PASS: shared settings round trip with new feature fields
 PASS: shared settings preserve radar filters and 400 pixel size
 PASS: shared settings preserve the visible target color
 PASS: shared settings preserve a disabled Magic visibility bypass
+PASS: version 7 sharing preserves Magic minimum distance
 PASS: version 3 shared settings migrate radar options and retired feet labels
 PASS: version 4 shared settings keep custom colors and radar and add cyan visible targets
 PASS: version 5 shared settings enable Magic visibility bypass and preserve prior settings
+PASS: version 6 sharing defaults Magic minimum to zero and preserves prior choices
 PASS: radar vehicle types can be selected independently
 PASS: automatic radar collection covers its supported range
 PASS: manual radar collection respects selected range
@@ -102,6 +104,19 @@ PASS: upward projectile accepts a target below it
 PASS: upward projectile reverses downward while preserving speed
 PASS: externally controlled projectiles are not modified
 PASS: projectiles without flight time are not modified
+PASS: combined modes use Silent prediction below Magic minimum
+PASS: nearby Silent redirects the same round only once
+PASS: Magic starts exactly at the minimum and takes over an existing Silent round
+PASS: Magic keeps steering above minimum using the raw bone without prediction
+PASS: returning below minimum stops continuous steering without reapplying Silent
+PASS: Magic visibility bypass does not leak into nearby Silent mode
+PASS: Magic visibility bypass still works at the minimum
+PASS: disabled Magic bypass still blocks hidden targets above minimum
+PASS: Magic alone ignores the combined-mode minimum
+PASS: Silent alone remains once per round beyond the minimum
+PASS: zero minimum preserves continuous Magic at close range
+PASS: vehicle targets use the same distance threshold
+PASS: opening the menu still pauses projectile targeting
 PASS: 1000 rounds stay within the fixed tracer budget
 PASS: expired tracers clear without new shots
 PASS: reused projectile slot starts a separate trail
@@ -159,17 +174,22 @@ PASS: invalid pointer ranges
 PASS: reject invalid pointer recorded in crash dump
 PASS: memory checks do not depend on local exception handlers
 PASS: settings validation
+PASS: invalid and default Magic minimum preserve prior behavior
+PASS: Magic minimum clamps to the slider maximum
+PASS: Magic minimum cannot be negative
 PASS: save isolated test settings
 PASS: settings, palette and radar position round trip
 PASS: visible target color survives save and load
 PASS: disabled Magic visibility bypass survives save and load
+PASS: Magic minimum distance survives save and load
 PASS: version 1 migration keeps custom settings and upgrades unchanged colors
 PASS: truncated version 2 settings are rejected
 PASS: version 2 migration supplies new defaults without overwriting old settings
 PASS: version 3 migration doubles the old default radar and preserves feature settings
 PASS: version 4 keeps custom hidden target color and defaults visible targets to cyan
 PASS: version 5 settings default Magic visibility bypass on and retain colors and radar
-PASS: save version 6 settings
+PASS: version 6 settings preserve existing choices and add zero Magic minimum
+PASS: save version 7 settings
 PASS: radar filters survive save and load
 PASS: bad settings leave current state unchanged
 PASS: stationary trajectory
@@ -183,7 +203,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.522 ms
+Busy-GPU stage 1 submission: 0.486 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -192,7 +212,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.226 ms
+Busy-GPU stage 2 submission: 0.202 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -201,7 +221,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.207 ms
+Busy-GPU stage 3 submission: 0.300 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -257,6 +277,10 @@ PASS: discard a click outside the menu after one frame
 PASS: outside click cannot activate a control after cursor movement
 PASS: released slider press retains its original position across skipped frames
 PASS: released pending slider does not keep dragging
+PASS: combined modes expose a working Magic minimum slider
+PASS: capture Magic minimum slider and its help
+PASS: Magic-only hides the slider and retains its value
+PASS: Silent-only hides the slider and retains its value
 PASS: radar X slider sets center coordinate
 PASS: radar slider drag clamps to right edge
 PASS: radar slider drag clamps to left edge
@@ -311,7 +335,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.631 ms CPU average, 13.104 ms max; 32.355 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.488 ms CPU average, 12.127 ms max; 19.697 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -323,6 +347,6 @@ PASS: present external frame
 PASS: external presentation preserves pixels and alpha
 0 failure(s)
 
-FullName                          Length
---------                          ------
-C:\xampp\htdocs\downloads\dll.dll 251392
+FullName                                                       Length
+--------                                                       ------
+C:\Users\Administrator\Documents\ChatGPT\re-write\build\wd.dll 253952

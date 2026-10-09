@@ -198,12 +198,14 @@ int test_features()
     settings.radar.helicopters = false;
     settings.selected_visible_color[0] = 0.45f;
     settings.magic_ignore_visibility = false;
+    settings.magic_min_distance = 250;
     const auto encoded = encode_config(settings);
     Config decoded;
     check(decode_config(encoded.c_str(), encoded.size(), decoded) && decoded.extra.build_x && decoded.extra.tracer_style == 3 && decoded.extra.tracer_color[1] == 0.37f, "shared settings round trip with new feature fields");
     check(decoded.esp.minimap_size == 400 && decoded.radar.items && decoded.radar.bags && !decoded.radar.helicopters, "shared settings preserve radar filters and 400 pixel size");
     check(decoded.selected_visible_color[0] == 0.45f && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "shared settings preserve the visible target color");
     check(!decoded.magic_ignore_visibility, "shared settings preserve a disabled Magic visibility bypass");
+    check(encoded.compare(0, 9, "XENGINE7:") == 0 && decoded.magic_min_distance == 250, "version 7 sharing preserves Magic minimum distance");
     Config old_settings;
     old_settings.esp.minimap_size = 200;
     old_settings.esp.vehicles = false;
@@ -255,6 +257,22 @@ int test_features()
     snprintf(checksum, sizeof(checksum), "%08X", hash);
     legacy += checksum;
     check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.magic_ignore_visibility && decoded.selected_visible_color[0] == 0.2f && decoded.radar.bags, "version 5 shared settings enable Magic visibility bypass and preserve prior settings");
+    old_settings.magic_ignore_visibility = false;
+    old_settings.magic_min_distance = 500;
+    unsigned char v6_bytes[4 + offsetof(Config, magic_min_distance)]{6};
+    memcpy(v6_bytes + 4, &old_settings, offsetof(Config, magic_min_distance));
+    legacy = "XENGINE6:";
+    hash = 2166136261u;
+    for (unsigned char byte : v6_bytes)
+    {
+        char hex[3];
+        snprintf(hex, sizeof(hex), "%02X", byte);
+        legacy += hex;
+        hash = (hash ^ byte) * 16777619u;
+    }
+    snprintf(checksum, sizeof(checksum), "%08X", hash);
+    legacy += checksum;
+    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.magic_min_distance == 0 && !decoded.magic_ignore_visibility && decoded.selected_visible_color[0] == 0.2f && decoded.radar.bags, "version 6 sharing defaults Magic minimum to zero and preserves prior choices");
     using wdgs::actors::Kind;
     check(radar_vehicle_visible(settings, Kind::boat) && radar_vehicle_visible(settings, Kind::buggy) && !radar_vehicle_visible(settings, Kind::heli), "radar vehicle types can be selected independently");
     check(radar_scan_range(settings) == 5000, "automatic radar collection covers its supported range");
@@ -311,6 +329,103 @@ int test_features()
     round.external_movement = 0;
     round.flight_time = 0;
     check(!wdgs::magic_bullet::test_retarget(round, {100, 0, 100}, 10, 12), "projectiles without flight time are not modified");
+    {
+        using namespace wdgs::projectile_subsystem;
+        Object controller, subsystem, projectile;
+        subsystem.put(pool_offset, projectile.addr());
+        subsystem.put(allocated_offset, std::uint32_t(1));
+        subsystem.put(inline_bits_offset, std::uint32_t(1));
+        projectile.put(location_offset, FVector{0, 0, 100});
+        projectile.put(owner_internal_index_offset, std::uint32_t(10));
+        projectile.put(flight_time_offset, 1.0);
+        const double saved_time = frame_time;
+        frame_time = 10;
+        std::vector<game::ProjectedPlayer> targets(1);
+        auto& target = targets[0];
+        target.actor_addr = controller.addr();
+        target.player.has_bones = target.player.isVisible = true;
+        target.player.health = 100;
+        target.bones[BONE_HEAD] = {screen_width * 0.5f, screen_height * 0.5f, true};
+        AimbotSettings aim;
+        aim.bone = 0;
+        aim.silent_aim = aim.magic_bullet = true;
+        PredictionSettings prediction;
+        prediction.enabled = true;
+        prediction.bullet_drop = prediction.show_line = false;
+        target.player.velocity = {0, 1000, 0};
+        game::PredictionLine line;
+        float minimum = 100;
+        bool ignore_visibility = true, menu_visible = false;
+        const auto fresh_round = [&]()
+        {
+            wdgs::magic_bullet::reset();
+            test_subsystem(subsystem.addr());
+            projectile.put(velocity_offset, FVector{10000, 0, 0});
+        };
+        const auto tick = [&](float distance, FVector bone)
+        {
+            target.player.distance = distance;
+            target.player.bones[BONE_HEAD] = bone;
+            aimbot::tick(targets, controller.bytes, camera, aim, prediction, 10000, 0, 0, line, {}, false, {}, 10, 12, menu_visible, ignore_visibility, minimum);
+            return read<FVector>(projectile.addr() + velocity_offset);
+        };
+        aimbot::reset();
+        aimbot::test_key(true);
+        fresh_round();
+        auto velocity = tick(99, {10000, 0, 100});
+        check(velocity.Y > 0, "combined modes use Silent prediction below Magic minimum");
+        const auto once = velocity;
+        velocity = tick(99, {0, 10000, 100});
+        check(velocity.X == once.X && velocity.Y == once.Y, "nearby Silent redirects the same round only once");
+        velocity = tick(100, {0, 10000, 100});
+        check(velocity.Y > 9999 && std::fabs(velocity.X) < 0.001, "Magic starts exactly at the minimum and takes over an existing Silent round");
+        velocity = tick(101, {10000, 0, 100});
+        check(velocity.X > 9999 && std::fabs(velocity.Y) < 0.001, "Magic keeps steering above minimum using the raw bone without prediction");
+        velocity = tick(99, {0, 10000, 100});
+        check(velocity.X > 9999 && std::fabs(velocity.Y) < 0.001, "returning below minimum stops continuous steering without reapplying Silent");
+        target.player.isVisible = false;
+        fresh_round();
+        velocity = tick(99, {0, 10000, 100});
+        check(velocity.X == 10000 && velocity.Y == 0, "Magic visibility bypass does not leak into nearby Silent mode");
+        velocity = tick(100, {0, 10000, 100});
+        check(velocity.Y > 9999, "Magic visibility bypass still works at the minimum");
+        ignore_visibility = false;
+        fresh_round();
+        velocity = tick(100, {0, 10000, 100});
+        check(velocity.X == 10000 && velocity.Y == 0, "disabled Magic bypass still blocks hidden targets above minimum");
+        ignore_visibility = target.player.isVisible = true;
+        aim.silent_aim = false;
+        fresh_round();
+        tick(1, {0, 10000, 100});
+        velocity = tick(1, {0, -10000, 100});
+        check(velocity.Y < -9999, "Magic alone ignores the combined-mode minimum");
+        aim.silent_aim = true;
+        aim.magic_bullet = false;
+        fresh_round();
+        tick(500, {0, 10000, 100});
+        velocity = tick(500, {0, -10000, 100});
+        check(velocity.Y > 9999, "Silent alone remains once per round beyond the minimum");
+        aim.magic_bullet = true;
+        minimum = 0;
+        fresh_round();
+        tick(1, {0, 10000, 100});
+        velocity = tick(1, {0, -10000, 100});
+        check(velocity.Y < -9999, "zero minimum preserves continuous Magic at close range");
+        target.is_vehicle = target.team_known = true;
+        minimum = 100;
+        fresh_round();
+        tick(99, {0, 10000, 100});
+        velocity = tick(100, {0, -10000, 100});
+        check(velocity.Y < -9999, "vehicle targets use the same distance threshold");
+        menu_visible = true;
+        fresh_round();
+        velocity = tick(100, {0, 10000, 100});
+        check(velocity.X == 10000 && velocity.Y == 0, "opening the menu still pauses projectile targeting");
+        aimbot::test_key(false);
+        aimbot::reset();
+        wdgs::magic_bullet::reset();
+        frame_time = saved_time;
+    }
     tracers::reset();
     for (unsigned i = 0; i < 1000; ++i)
     {

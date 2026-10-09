@@ -307,8 +307,8 @@ void menu::draw()
                     binding_keys[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
             }
         }
-        toggle(1, 0, "Silent aim", a.silent_aim, "Redirects each new local projectile once toward\nthe selected target without moving the camera.");
-        toggle(1, 1, "Magic bullet", a.magic_bullet, "Keeps steering local projectiles toward the target.\nTakes priority when Silent aim is also enabled.");
+        toggle(1, 0, "Silent aim", a.silent_aim, "Redirects each new local projectile once. With Magic\nalso ON, handles targets below Magic min distance.");
+        toggle(1, 1, "Magic bullet", a.magic_bullet, "Keeps steering local projectiles toward the target.\nWith Silent also ON, uses Magic min distance below.");
         toggle(1, 2, "Magic ignore visibility", config.magic_ignore_visibility, "Lets Magic steer toward an occluded selected target.\nFOV, team and projectile validity checks still apply.");
         number(1, 3, "Release delay (s)", a.magic_bullet_delay_off, 0.1f, 0, 10, "Waits before selecting another target after your\nMagic Bullet target reaches zero health.", "%.1f");
         toggle(1, 4, "No recoil", config.extra.no_recoil, "Suppresses weapon recoil while enabled.\nRestores the original values when disabled.");
@@ -316,6 +316,11 @@ void menu::draw()
         toggle(1, 6, "Bullet drop", config.prediction.bullet_drop, "Compensates for projectile gravity when\nprediction is enabled.");
         toggle(1, 7, "Velocity lead", config.prediction.velocity_lead, "Aims ahead of moving targets when\nprediction is enabled.");
         toggle(1, 8, "Prediction line", config.prediction.show_line, "Draws a line from the target bone to the predicted\naim point when prediction is active.");
+        if (a.magic_bullet && a.silent_aim)
+        {
+            divider(1, 9);
+            slider(1, 9, "Magic min dist (m)", config.magic_min_distance, 0, 1000, "With Silent + Magic: Silent below this target distance;\nMagic at or above it. 0 keeps Magic at every range.");
+        }
         break;
     case 1:
         divider(0, 3);

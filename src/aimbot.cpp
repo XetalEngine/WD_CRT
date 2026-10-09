@@ -17,6 +17,9 @@ namespace
     double g_magic_dead_since{};
     bool g_magic_reported = false;
     bool g_magic_reported_target = false;
+#ifdef WD_TEST
+    bool g_test_key_down = false;
+#endif
     constexpr float kMagicShortRangeMeters = 50.f;
     // Helpers
     int bone_slot_for_config(int cfg_bone)
@@ -123,7 +126,7 @@ void aimbot::reset()
 }
 
 // Main tick
-void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* controller, const CameraIPC& camera, const AimbotSettings& settings, const PredictionSettings& prediction_settings, float local_bullet_speed, float local_zeroing_meters, float local_gravity_scale, game::PredictionLine& prediction_line, const FVector& muzzle_position, bool muzzle_valid, const VehicleAimContext& vehicle_aim, std::uint32_t local_pawn_internal_index, std::uint32_t local_vehicle_internal_index, bool menu_visible, bool magic_ignore_visibility)
+void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* controller, const CameraIPC& camera, const AimbotSettings& settings, const PredictionSettings& prediction_settings, float local_bullet_speed, float local_zeroing_meters, float local_gravity_scale, game::PredictionLine& prediction_line, const FVector& muzzle_position, bool muzzle_valid, const VehicleAimContext& vehicle_aim, std::uint32_t local_pawn_internal_index, std::uint32_t local_vehicle_internal_index, bool menu_visible, bool magic_ignore_visibility, float magic_min_distance)
 {
     prediction_line = {};
     if (!settings.enabled || !is_valid_ptr(controller))
@@ -132,7 +135,11 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         return;
     }
 
-    bool key_down = !menu_visible && (GetAsyncKeyState(settings.key) & 0x8000) != 0;
+#ifdef WD_TEST
+    const bool key_down = !menu_visible && g_test_key_down;
+#else
+    const bool key_down = !menu_visible && (GetAsyncKeyState(settings.key) & 0x8000) != 0;
+#endif
     if (!key_down)
     {
         reset();
@@ -144,6 +151,10 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         g_magic_reported_target = false;
 
     const double now = frame_time;
+    const auto magic_at_distance = [&](float distance)
+    {
+        return settings.magic_bullet && (!settings.silent_aim || distance >= magic_min_distance);
+    };
     float delta_time = static_cast<float>(now - g_last_tick);
     g_last_tick = now;
     if (delta_time <= 0.f || delta_time > 0.1f)
@@ -196,7 +207,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
                                         std::isfinite(locked->player.health) && locked->player.health <= 0.f;
         const float delay_off = (std::clamp)(settings.magic_bullet_delay_off, 0.f, 10.f);
 
-        if (settings.magic_bullet && dead_locked_target && delay_off > 0.f)
+        if (dead_locked_target && magic_at_distance(locked->player.distance) && delay_off > 0.f)
         {
             if (g_magic_dead_actor != g_locked_actor || g_magic_dead_since == 0)
             {
@@ -286,13 +297,17 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         g_locked_actor = best->actor_addr;
     }
 
+    const bool magic_active = magic_at_distance(best->player.distance);
+    if (report && !magic_active)
+        log("Magic: using Silent below minimum distance (target=%.0fm minimum=%.0fm)", best->player.distance, magic_min_distance);
+
     // Visibility is sampled once while building the frame snapshot. Repeating
     // the engine line trace here adds a second expensive ProcessEvent call for
     // the same target on every aim tick.
-    if (settings.visible_check && !vehicle_aim.valid && !best->player.isVisible && !(settings.magic_bullet && magic_ignore_visibility))
+    if (settings.visible_check && !vehicle_aim.valid && !best->player.isVisible && !(magic_active && magic_ignore_visibility))
     {
         if (report)
-            log("Magic: selected target blocked by Aim visibility check");
+            log("%s: selected target blocked by Aim visibility check", magic_active ? "Magic" : "Silent");
         if (settings.magic_bullet)
             wdgs::magic_bullet::probe(camera.location);
         return;
@@ -322,7 +337,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     // ordinary prediction solver in that mode: both gravity compensation and
     // target-velocity lead would move the retarget point away from the raw
     // selected bone.
-    if (!settings.magic_bullet && prediction_settings.enabled && std::isfinite(local_bullet_speed) && local_bullet_speed >= 1000.f)
+    if (!magic_active && prediction_settings.enabled && std::isfinite(local_bullet_speed) && local_bullet_speed >= 1000.f)
     {
         prediction::Input input{};
         input.camera = aim_origin;
@@ -366,11 +381,13 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
                 ? bone_pos
                 : aim_point;
         // Report the first redirect attempt even if selection became valid after the key press.
-        const bool report_target = settings.magic_bullet && !g_magic_reported_target;
-        g_magic_reported_target = settings.magic_bullet;
+        const bool report_target = magic_active && !g_magic_reported_target;
         if (report_target)
+        {
+            g_magic_reported_target = true;
             log("Magic: target=%p bone=%d visible=%d on update thread", reinterpret_cast<void*>(best->actor_addr), aim_bone, best->player.isVisible);
-        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !settings.magic_bullet, report_target);
+        }
+        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !magic_active, report_target);
     }
 
     // Silent aim redirects a new local round once; Magic Bullet keeps steering it.
@@ -389,3 +406,10 @@ std::uintptr_t aimbot::selected_actor()
 {
     return g_locked_actor;
 }
+
+#ifdef WD_TEST
+void aimbot::test_key(bool down)
+{
+    g_test_key_down = down;
+}
+#endif

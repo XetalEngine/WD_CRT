@@ -68,5 +68,8 @@ namespace wdgs::projectile_subsystem
     bool acquire(Snapshot& out);
     bool read_instance(const Snapshot& snapshot, std::uint32_t slot, Instance& out);
     void reset();
+#ifdef WD_TEST
+    void test_subsystem(std::uintptr_t subsystem);
+#endif
 
 } // namespace wdgs::projectile_subsystem

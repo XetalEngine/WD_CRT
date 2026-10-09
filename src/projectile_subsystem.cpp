@@ -256,4 +256,12 @@ namespace wdgs::projectile_subsystem
         g_class_matches.clear();
     }
 
+#ifdef WD_TEST
+    void test_subsystem(std::uintptr_t subsystem)
+    {
+        g_subsystem = subsystem;
+        g_subsystem_class = read<std::uintptr_t>(subsystem + offsets::UObject::ClassPrivate);
+        g_next_scan_ms = frame_ticks + kRescanDelayMs;
+    }
+#endif
 } // namespace wdgs::projectile_subsystem
