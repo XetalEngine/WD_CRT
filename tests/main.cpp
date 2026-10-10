@@ -637,17 +637,27 @@ int main(int argc, char** argv)
     config = before_camera_test;
 
     config.esp.minimap_auto_range = false;
+    wcscpy_s(scene.local_name, L"X-Engine Player");
     scene.players[0].player.world_pos = {0, 30000, 0};
     check(begin_frame(), "begin radar boundary frame");
     visuals::draw(scene);
     overlay::end();
     check(overlay::capture(L"build/radar-boundary.bmp") && pixel(L"build/radar-boundary.bmp", 881, 212, 0, 255, 0, 255) && pixel(L"build/radar-boundary.bmp", 893, 212, 0, 0, 0, 0), "edge marker stays inside round radar");
+    scene.local_name[0] = L'\0';
     config.esp.minimap_x = 212;
     config.esp.minimap_y = 408;
     check(begin_frame(), "begin moved radar frame");
     visuals::draw(scene);
     overlay::end();
     check(overlay::capture(L"build/radar-moved.bmp") && pixel(L"build/radar-moved.bmp", 212, 408, 255, 255, 255, 255) && pixel(L"build/radar-moved.bmp", 688, 212, 0, 0, 0, 0), "radar moves without leaving its previous image");
+    wcscpy_s(scene.local_name, L"Current name / \u6D4B\u8BD5");
+    if (begin_frame())
+    {
+        visuals::draw(scene);
+        overlay::end();
+        overlay::capture(L"build/radar-name-moved.bmp");
+    }
+    scene.local_name[0] = L'\0';
 
     const Config before_filters = config;
     config = {};

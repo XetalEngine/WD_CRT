@@ -57,6 +57,7 @@ namespace game
         CameraIPC camera{};
         float local_yaw = 0.f;
         bool local_yaw_valid = false;
+        wchar_t local_name[65]{};
         PredictionLine prediction_line{};
         std::uintptr_t aim_selected_actor = 0;
         bool weapon_stats_valid = false;

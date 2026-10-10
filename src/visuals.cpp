@@ -349,9 +349,10 @@ namespace
     void radar(const game::Snapshot& snapshot)
     {
         const auto& e = config.esp;
-        const float half = std::min(e.minimap_size, static_cast<float>(std::min(screen_width, screen_height))) * 0.5f;
+        const float available_height = std::max(1.f, screen_height - (snapshot.local_name[0] ? 28.f : 0.f));
+        const float half = std::min(e.minimap_size, std::min(static_cast<float>(screen_width), available_height)) * 0.5f;
         const float x = std::clamp(e.minimap_x < 0 ? screen_width - half - 12 : e.minimap_x, half, screen_width - half);
-        const float y = std::clamp(e.minimap_y < 0 ? half + 12 : e.minimap_y, half, screen_height - half);
+        const float y = std::clamp(e.minimap_y < 0 ? half + 12 : e.minimap_y, half, available_height - half);
         const auto show_player = [&](const game::ProjectedPlayer& p)
         {
             return !p.is_vehicle && std::isfinite(p.player.health) && (p.player.health > 0 || config.radar.downed) && (p.player.is_in_team ? config.extra.radar_team : config.radar.enemies);
@@ -435,6 +436,8 @@ namespace
         char label[32];
         snprintf(label, sizeof(label), xor_text("%.0fm"), range);
         text(x, y + half - 23, label, local, 12, true);
+        if (snapshot.local_name[0])
+            text(x, y + half + 6, snapshot.local_name, local, 14, true, color(config.colors.label_fill));
     }
 } // namespace
 

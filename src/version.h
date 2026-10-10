@@ -5,6 +5,6 @@ namespace version
 {
     inline const char* title()
     {
-        return xor_text("X-Engine v1.0.4");
+        return xor_text("X-Engine v1.0.6");
     }
 } // namespace version

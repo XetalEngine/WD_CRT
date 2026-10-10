@@ -1,20 +1,18 @@
-Configurable name-change key - X-Engine v1.0.4
+Current player name below the mini radar - X-Engine v1.0.6
 
-Aim > Name change key now sits directly below Aim key. Click the button and press a keyboard or mouse key; Escape cancels. Enter remains the default. Hold aim until a player is highlighted, then press the configured name-change key. The shared key picker rejects the other action's current binding and reserved menu, label, distance/FOV and mortar-cycle keys. Feedback explains rejected bindings. Save settings explicitly to retain the selected key.
+The mini radar now displays the local player's current name centered six pixels below its lower edge, using the existing Tahoma text renderer, radar-local color and label background. It follows the radar's position. When a name is present, the radar reserves 28 pixels below it so the caption remains visible near the bottom edge. No caption is drawn for an empty name or while the radar is disabled.
 
-The existing updater polls the configured virtual key in place of Enter, with no additional key poll. One request is allowed per press. Rebinding while the new key is down requires a release before triggering. Old Enter stops triggering when rebound, and same-key aim/name configurations cannot rename. The existing selected-target and game-window callback paths, safety checks, and name payload remain unchanged.
+The updater reads the local PlayerState name through the existing bounded, guarded PlayerName helper at most every 250 ms while the radar is enabled, reusing frame_ticks. A fixed 65-wchar cache is copied into the existing snapshot; the render thread only draws that copy. Name requests do not optimistically alter the label: it changes when the game's PlayerState does. Match-context changes/reset clear the cache, and invalid snapshots clear their name and remain nondrawable. No new thread, clock/API call or polling in the renderer was added.
 
-Settings version 10 appends one integer. Version 1-9 saves retain their existing fields and default this key to Enter. Sharing emits XENGINE10 and accepts versions 3-9 with their original lengths/checksums. Invalid/reserved imported name-change keys fall back to Enter. Prior target-color migration remains intact.
+Validation: clean Desktop Release v1.0.5 build; all existing 440 checks passed. Existing render fixtures now include names at the default radar position and a moved radar near the lower edge; both captures were visually inspected, including Unicode. No live-game injection or rename replication test was performed. That clean build measured 377856 bytes (369.0 KiB; +512 bytes). A concurrent build subsequently advanced the title to v1.0.6 with no other source or project changes; the latest DLL was audited separately and measures 379904 bytes (371.0 KiB), with 118 imports unchanged. Latest string audit: no unwrapped runtime literals or plaintext source strings. Existing compiler-option warnings remain unchanged.
 
-Validation: clean Desktop Release build; all 440 checks passed. Added checks cover independent menu capture, conflicts, Escape, restoring Enter, old/new settings persistence, custom trigger selection, held-key debouncing, rebind while held and same-key protection. The rendered menu was inspected. DLL: 377344 bytes (368.5 KiB), 118 imports (unchanged). No new threads, timers, Windows imports or additional update-loop API calls. String audit: 677 wrapped runtime literals, 579 distinct strings checked, zero unwrapped or plaintext source strings. Existing compiler-option warnings remain. No live-game injection was performed.
-
-Desktop and staging source match. Desktop project/output settings and xor.h are unchanged. Build bumper advanced the title to v1.0.4. No commit or push was performed.
+Desktop and staging sources match, including the latest v1.0.6 title. Desktop project/output settings and xor.h are unchanged. No commit or push was performed.
 
 DLL: C:\xampp\htdocs\downloads\dll.dll
-SHA256: 1c3ae2697c88b06624b69d29664f440d70267421f33519d0424aeda2df77ba0f
+SHA256: 66956ac3b2cde515152d28d9bbbe2a8761a433a626a46704fb36c5e53e32ceda
 
 C:\xampp\htdocs\downloads\dll.dll
-Size: 377344 bytes (368.5 KiB)
+Size: 379904 bytes (371.0 KiB)
 Imports: 118
   KERNEL32.dll: 34
   USER32.dll: 18
@@ -31,7 +29,7 @@ Imports: 118
   api-ms-win-crt-stdio-l1-1-0.dll: 2
   api-ms-win-crt-math-l1-1-0.dll: 20
   api-ms-win-crt-heap-l1-1-0.dll: 3
-SHA256: 1c3ae2697c88b06624b69d29664f440d70267421f33519d0424aeda2df77ba0f
+SHA256: 66956ac3b2cde515152d28d9bbbe2a8761a433a626a46704fb36c5e53e32ceda
 
 Previously measured rewrite before the hook fix: 173568 bytes (169.5 KiB), 99 imports; SHA256 f5be2d8a14ef7dad0cb8823300bd34a3603f6684fb99565a0ee6bc43e7f3fda6.
 
@@ -56,7 +54,7 @@ Scope: application-owned runtime literals in src. Includes, comments, diagnostic
 
 
 C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.CppBuild.targets(524,5): warning MSB8004: Output Directory does not end with a trailing slash.  This build instance will add the slash as it is required to allow proper evaluation of the Output Directory. [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-  X-Engine v1.0.4
+  X-Engine v1.0.5
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
@@ -66,94 +64,94 @@ cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-ta
 cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   actor_registry.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  aimbot.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-  aimbot.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   anti_sam.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   config.cpp
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   core.cpp
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   engine_funcs.cpp
 cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   game.cpp
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   extras.cpp
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   tracers.cpp
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   game_actions.cpp
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   magic_bullet.cpp
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
-cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
 cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   menu.cpp
-cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
   mortar_aim.cpp
   offsets.cpp
   overlay.cpp
@@ -165,7 +163,7 @@ cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-m
   world_actor_snapshot.cpp
   Generating code
   Previous IPDB not found, fall back to full compilation.
-  All 6209 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  All 6210 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
   Finished generating code
   wd.vcxproj -> C:\xampp\htdocs\downloads\dll.dll
 
@@ -199,7 +197,7 @@ cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-m
   crowded.cpp
   Generating code
   Previous IPDB not found, fall back to full compilation.
-  All 6706 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  All 6713 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
   Finished generating code
   tests.vcxproj -> C:\Users\Administrator\Desktop\WD_transformation\re-write\build\wd-tests.exe
 
@@ -216,7 +214,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 2881
+Concurrent snapshot reads: 2912
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -479,7 +477,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.271 ms
+Busy-GPU stage 1 submission: 0.329 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -488,7 +486,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.148 ms
+Busy-GPU stage 2 submission: 0.160 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -497,7 +495,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.153 ms
+Busy-GPU stage 3 submission: 0.140 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -638,7 +636,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.313 ms CPU average, 4.998 ms max; 9.869 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.294 ms CPU average, 5.043 ms max; 7.935 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -652,4 +650,4 @@ PASS: external presentation preserves pixels and alpha
 
 FullName                          Length
 --------                          ------
-C:\xampp\htdocs\downloads\dll.dll 377344
+C:\xampp\htdocs\downloads\dll.dll 377856

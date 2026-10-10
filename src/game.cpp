@@ -33,6 +33,8 @@ namespace game
         {
             std::uintptr_t world = 0, level = 0, controller = 0, pawn = 0, camera = 0, player_state = 0;
         } g_match;
+        wchar_t g_local_name[65]{};
+        ULONGLONG g_next_name_read = 0;
 
         bool live(std::uintptr_t object)
         {
@@ -585,6 +587,8 @@ namespace game
     void init()
     {
         g_match = {};
+        g_local_name[0] = L'\0';
+        g_next_name_read = 0;
         extras::reset();
         tracers::reset();
         wdgs::actors::reset();
@@ -614,6 +618,7 @@ namespace game
 
         // Keep vector capacity between frames; invalid worlds never retain drawable data.
         snapshot.valid = false;
+        snapshot.local_name[0] = L'\0';
         snapshot.players.clear();
         snapshot.vehicles.clear();
         snapshot.dropped_items.clear();
@@ -755,7 +760,16 @@ namespace game
         output.local_yaw = 0.f;
         output.local_yaw_valid = false;
         if (settings.esp.minimap)
+        {
             output.local_yaw_valid = read_local_yaw(my_pawn, output.local_yaw);
+            if (frame_ticks >= g_next_name_read)
+            {
+                const auto name = reinterpret_cast<APlayerState*>(match.player_state)->PlayerName();
+                wcsncpy_s(g_local_name, name.c_str(), _TRUNCATE);
+                g_next_name_read = frame_ticks + 250;
+            }
+            wcsncpy_s(output.local_name, g_local_name, _TRUNCATE);
+        }
         output.prediction_line = {};
         output.aim_selected_actor = 0;
 
