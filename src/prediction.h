@@ -25,6 +25,6 @@ namespace prediction
         bool valid = false;
     };
 
-    Result solve(const Input& input) noexcept;
+    Result solve(const Input& input, bool projectile = false) noexcept;
 
 } // namespace prediction

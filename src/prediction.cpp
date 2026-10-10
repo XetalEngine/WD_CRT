@@ -14,14 +14,14 @@ namespace
 
 } // namespace
 
-prediction::Result prediction::solve(const Input& input) noexcept
+prediction::Result prediction::solve(const Input& input, bool projectile) noexcept
 {
     Result output{};
-    if (!finite_vector(input.camera) || !finite_vector(input.target) || !finite_vector(input.target_velocity) || !std::isfinite(input.bullet_speed) || input.bullet_speed < 1000.f || input.bullet_speed > 300000.f || !std::isfinite(input.zeroing_meters) || !std::isfinite(input.gravity_scale))
+    if (!finite_vector(input.camera) || !finite_vector(input.target) || !finite_vector(input.target_velocity) || !std::isfinite(input.bullet_speed) || input.bullet_speed < (projectile ? 100.f : 1000.f) || input.bullet_speed > 300000.f || !std::isfinite(input.zeroing_meters) || !std::isfinite(input.gravity_scale))
         return output;
 
     FVector velocity = input.velocity_lead ? input.target_velocity : FVector{};
-    if (std::abs(velocity.Z) < 300.0)
+    if (!projectile && std::abs(velocity.Z) < 300.0)
         velocity.Z = 0.0;
 
     const double gravity = input.bullet_drop
@@ -30,7 +30,8 @@ prediction::Result prediction::solve(const Input& input) noexcept
     const double zeroing_uu = std::clamp(static_cast<double>(input.zeroing_meters), 0.0, 2000.0) * 100.0;
     const double speed = static_cast<double>(input.bullet_speed);
     double zeroing_slope = 0.0;
-    if (gravity > 0.0 && zeroing_uu > 0.0)
+    // Replacing a projectile's velocity replaces its original sight zeroing too.
+    if (!projectile && gravity > 0.0 && zeroing_uu > 0.0)
     {
         const double zeroing_time = zeroing_uu / speed;
         const double zeroing_drop = 0.5 * gravity * zeroing_time * zeroing_time;
@@ -50,8 +51,7 @@ prediction::Result prediction::solve(const Input& input) noexcept
         predicted.Y = input.target.Y + velocity.Y * travel;
 
         const double drop = 0.5 * gravity * travel * travel;
-        const double horizontal_distance = std::hypot(predicted.X - input.camera.X, predicted.Y - input.camera.Y);
-        const double zeroing_compensation = zeroing_slope * horizontal_distance;
+        const double zeroing_compensation = zeroing_slope > 0.0 ? zeroing_slope * std::hypot(predicted.X - input.camera.X, predicted.Y - input.camera.Y) : 0.0;
         predicted.Z = input.target.Z + velocity.Z * travel + drop - zeroing_compensation;
     }
 

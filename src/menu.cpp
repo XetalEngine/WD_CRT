@@ -1,4 +1,5 @@
 #include "menu.h"
+#include "version.h"
 #include "config.h"
 #include "overlay.h"
 #include "game_actions.h"
@@ -13,7 +14,8 @@ namespace
     float click_x, click_y;
     float drag_x, drag_y;
     int tab;
-    bool clicked, held, dragging, stop, binding;
+    bool clicked, held, dragging, stop;
+    int* binding;
     bool old_insert, old_end, old_mouse, old_backspace;
     bool binding_keys[256]{};
     float* active_slider;
@@ -33,12 +35,27 @@ namespace
         {VK_OEM_4, VK_OEM_6, &config.esp.skeleton_distance, 25, 500, xor_text("Skeleton distance: %.0f m   [ / ]")},
         {VK_DOWN, VK_UP, &config.aimbot.fov, 5, 800, xor_text("Aim FOV: %.0f px   [Up / Down]")}};
 
-    bool adjustment_key(int key)
+    void finish_binding(int key)
     {
-        for (const auto& a : adjustments)
-            if (key == a.decrease || key == a.increase)
-                return true;
-        return false;
+        if (!binding)
+            return;
+        const int other = binding == &config.aimbot.key ? config.name_change_key : config.aimbot.key;
+        if (key != VK_ESCAPE)
+        {
+            if (!bindable_key(key))
+                status = xor_text("Reserved hotkey; binding unchanged.");
+            else if (key == other)
+                status = xor_text("Aim and name change must use different keys.");
+            else
+            {
+                *binding = key;
+                status = xor_text("Key bound. Save settings to keep it.");
+            }
+        }
+        else
+            status = xor_text("Key binding cancelled.");
+        binding = nullptr;
+        clicked = false;
     }
 
     void update_adjustments(unsigned keys, ULONGLONG now)
@@ -243,6 +260,29 @@ namespace
             value = (value + 1) % count;
         hint(a, b, 292, 24, help);
     }
+
+    void keybind(int row, const char* label, int& value, const char* help)
+    {
+        const float top = y + 88 + row * 30;
+        char key[24];
+        if (value >= VK_LBUTTON && value <= VK_XBUTTON2 && value != VK_CANCEL)
+            snprintf(key, sizeof(key), xor_text("Mouse %d"), value > VK_CANCEL ? value - 1 : value);
+        else if (value == VK_RETURN)
+            strcpy_s(key, xor_text("Enter"));
+        else if ((value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9'))
+            snprintf(key, sizeof(key), xor_text("%c"), value);
+        else if (value >= VK_F1 && value <= VK_F24)
+            snprintf(key, sizeof(key), xor_text("F%d"), value - VK_F1 + 1);
+        else
+            snprintf(key, sizeof(key), xor_text("VK 0x%02X"), value);
+        text(x + 18, top + 3, label, color(config.colors.menu_text));
+        if (button(x + 182, top, 128, binding == &value ? xor_text("Press key...") : key, false, help))
+        {
+            binding = &value;
+            for (int i = 1; i < 255; ++i)
+                binding_keys[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+        }
+    }
 } // namespace
 
 bool menu::stop_requested()
@@ -286,7 +326,7 @@ void menu::update()
     {
         dragging = false;
         clicked = false;
-        binding = false;
+        binding = nullptr;
         active_slider = nullptr;
         return;
     }
@@ -299,10 +339,7 @@ void menu::update()
             const bool down = (GetAsyncKeyState(key) & 0x8000) != 0;
             if (down && !binding_keys[key])
             {
-                if (key != VK_ESCAPE && key != VK_INSERT && key != VK_END && key != VK_BACK && !adjustment_key(key))
-                    config.aimbot.key = key;
-                binding = false;
-                clicked = false;
+                finish_binding(key);
                 break;
             }
             binding_keys[key] = down;
@@ -347,7 +384,7 @@ void menu::draw()
     line(x + 18, y + 36, x + width - 18, y + 36, border);
     rect(x + 1, y + height - 34, width - 2, 33, control);
     line(x + 18, y + height - 34, x + width - 18, y + height - 34, border);
-    text(x + 18, y + 9, xor_text("X-Engine"), color(config.colors.menu_accent), 17);
+    text(x + 18, y + 9, version::title(), color(config.colors.menu_accent), 17);
     text(x + 450, y + 12, xor_text("Insert to close"), muted, 12);
     const char* tabs[]{xor_text("Aim"), xor_text("Players"), xor_text("World"), xor_text("Mini Radar"), xor_text("Mortar"), xor_text("Effects"), xor_text("Colors"), xor_text("Settings")};
     const char* tab_help[]{xor_text("Aim targeting, prediction and projectile options."), xor_text("Player boxes, names, skeletons and display ranges."), xor_text("Vehicle, item, explosive and bag labels in the world."), xor_text("Radar size, position, range and visible categories."), xor_text("Mortar targeting, impact radar and helicopter flares."), xor_text("Bullet trails, automatic actions and feature HUD."), xor_text("Pick the colors and transparency of overlay elements."), xor_text("Save, load, share or reset settings; stop the overlay.")};
@@ -378,20 +415,9 @@ void menu::draw()
         choice(0, 5, xor_text("Target priority"), a.mode, modes, 3, xor_text("Prefers the closest target, nearest to the crosshair,\nor lowest health. Click to cycle."));
         number(0, 6, xor_text("FOV (Up/Down)"), a.fov, 5, 1, 800, xor_text("Sets the aim selection radius in screen pixels.\nHold Up / Down to adjust in 5-pixel steps."));
         integer(0, 7, xor_text("Aim speed"), a.smooth, 1, 50, xor_text("Controls how quickly normal aim turns toward a target.\nHigher values turn faster."));
-        text(x + 18, y + 331, xor_text("Aim key"), color(config.colors.menu_text));
-        {
-            char key[24];
-            strcpy_s(key, xor_text("Mouse 1"));
-            if (a.key != VK_LBUTTON)
-                snprintf(key, sizeof(key), xor_text("VK 0x%02X"), a.key);
-            if (button(x + 182, y + 328, 128, binding ? xor_text("Press key...") : key, false, xor_text("Click, then press a key or mouse button to bind aim.\nEscape cancels without changing the binding.")))
-            {
-                binding = true;
-                for (int i = 1; i < 255; ++i)
-                    binding_keys[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
-            }
-        }
-        toggle(1, 0, xor_text("Silent aim"), a.silent_aim, xor_text("Redirects each new local projectile once. With Magic\nalso ON, handles targets below Magic min distance."));
+        keybind(8, xor_text("Aim key"), a.key, xor_text("Click to bind aim; Escape cancels.\nUse a different key from Name change key."));
+        keybind(9, xor_text("Name change key"), config.name_change_key, xor_text("Hold aim on a highlighted player, then press this key\nto copy their name. Click to rebind; Escape cancels."));
+        toggle(1, 0, xor_text("Silent aim"), a.silent_aim, xor_text("Redirects each new local projectile once. Enable\nPrediction for movement lead and drop compensation."));
         toggle(1, 1, xor_text("Magic bullet"), a.magic_bullet, xor_text("Keeps steering local projectiles toward the target.\nWith Silent also ON, uses Magic min distance below."));
         toggle(1, 2, xor_text("Magic ignore visibility"), config.magic_ignore_visibility, xor_text("Lets Magic steer toward an occluded selected target.\nFOV, team and projectile validity checks still apply."));
         number(1, 3, xor_text("Release delay (s)"), a.magic_bullet_delay_off, 0.1f, 0, 10, xor_text("Waits before selecting another target after your\nMagic Bullet target reaches zero health."), xor_text("%.1f"));
@@ -399,7 +425,7 @@ void menu::draw()
         toggle(1, 5, xor_text("Prediction"), config.prediction.enabled, xor_text("Estimates where to aim for projectile travel time.\nMagic Bullet uses the current target bone instead."));
         toggle(1, 6, xor_text("Bullet drop"), config.prediction.bullet_drop, xor_text("Compensates for projectile gravity when\nprediction is enabled."));
         toggle(1, 7, xor_text("Velocity lead"), config.prediction.velocity_lead, xor_text("Aims ahead of moving targets when\nprediction is enabled."));
-        toggle(1, 8, xor_text("Prediction line"), config.prediction.show_line, xor_text("Draws a line from the target bone to the predicted\naim point when prediction is active."));
+        toggle(1, 8, xor_text("Prediction line"), config.prediction.show_line, xor_text("Shows a muzzle-based preview of the predicted point.\nSilent solves separately for each live projectile."));
         if (a.magic_bullet && a.silent_aim)
         {
             divider(1, 9);
@@ -648,8 +674,8 @@ void menu::test_adjust_keys(ULONGLONG now, std::initializer_list<int> keys, bool
             if (key == adjustments[i].increase)
                 mask |= 2u << (i * 2);
         }
-    const bool previous_binding = binding;
-    binding = capture;
+    const auto previous_binding = binding;
+    binding = capture ? &config.aimbot.key : nullptr;
     update_adjustments(mask, now);
     binding = previous_binding;
 }
@@ -657,6 +683,11 @@ void menu::test_adjust_keys(ULONGLONG now, std::initializer_list<int> keys, bool
 bool menu::test_adjustment_visible(int index)
 {
     return index >= 0 && index < 3 && adjustments[index].visible_until != 0;
+}
+
+void menu::test_bind_key(int key)
+{
+    finish_binding(key);
 }
 
 void menu::test_backspace(bool down)

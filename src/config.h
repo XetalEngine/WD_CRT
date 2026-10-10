@@ -154,16 +154,19 @@ struct Config
     } radar;
 
     // Version 5: append to preserve older saved settings.
-    float selected_visible_color[4] = {0, 1, 1, 1};
+    float selected_visible_color[4] = {1, 1, 1, 1};
 
     // Version 6: Magic can steer toward an occluded selected target.
     bool magic_ignore_visibility = true;
 
     // Version 7: Silent handles nearer targets when both projectile modes are on.
-    float magic_min_distance = 0.f;
+    float magic_min_distance = 100.f;
 
     // Version 8: shared world ESP cap; existing category limits still apply.
     float render_distance = 5000.f;
+
+    // Version 10: press while holding aim to copy the selected player's name.
+    int name_change_key = VK_RETURN;
 };
 
 namespace wdgs::actors
@@ -172,6 +175,7 @@ namespace wdgs::actors
 }
 bool radar_vehicle_visible(const Config& value, wdgs::actors::Kind kind);
 float radar_scan_range(const Config& value);
+bool bindable_key(int key);
 
 inline Config config;
 bool save_config();

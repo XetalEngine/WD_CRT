@@ -9,8 +9,16 @@ namespace
     using namespace overlay;
     constexpr int bones[][2]{{0, 1}, {1, 2}, {2, 3}, {16, 17}, {16, 4}, {4, 5}, {5, 6}, {17, 7}, {7, 8}, {8, 9}, {3, 10}, {10, 11}, {11, 12}, {3, 13}, {13, 14}, {14, 15}};
 
-    void outlined_line(float x1, float y1, float x2, float y2, Color c, float thickness = 1.f)
+    void outlined_line(float x1, float y1, float x2, float y2, Color c, float thickness = 1.f, bool bright = false)
     {
+        if (bright)
+        {
+            line(x1, y1, x2, y2, {0, 0, 0, c.a * 0.6f}, thickness + 5);
+            line(x1, y1, x2, y2, {c.r, c.g, c.b, c.a * 0.16f}, thickness + 4);
+            line(x1, y1, x2, y2, {c.r, c.g, c.b, c.a * 0.3f}, thickness + 2);
+            line(x1, y1, x2, y2, c, thickness);
+            return;
+        }
         Color glow = color(config.colors.glow);
         glow.a *= c.a;
         line(x1 + 1.5f, y1 + 1.5f, x2 + 1.5f, y2 + 1.5f, {0, 0, 0, c.a}, thickness + 1.5f);
@@ -33,13 +41,20 @@ namespace
         return color(strcmp(v.actor.label, xor_text("Talon 9K-SAM")) == 0 || strcmp(v.actor.label, xor_text("Vanguard CIWS")) == 0 ? config.colors.sam : config.esp.vehicle_color);
     }
 
-    void box(float x, float y, float w, float h, Color c)
+    void box(float x, float y, float w, float h, Color c, bool bright)
     {
         rect(x - 2, y - 2, w + 4, h + 4, color(config.colors.box_fill));
         Color glow = color(config.colors.glow);
         glow.a *= c.a;
         if (config.esp.box_style == 1)
         {
+            if (bright)
+            {
+                rect(x, y, w, h, {0, 0, 0, c.a * 0.6f}, false, 5);
+                rect(x, y, w, h, {c.r, c.g, c.b, c.a * 0.3f}, false, 3);
+                rect(x, y, w, h, c, false, 1.5f);
+                return;
+            }
             rect(x + 1, y + 1, w, h, {0, 0, 0, c.a * 200.f / 255}, false, 2);
             rect(x - 1, y - 1, w, h, glow, false, 1.5f);
             rect(x, y, w, h, c, false);
@@ -55,6 +70,14 @@ namespace
                     line(a + sx * inset, b + sy * inset, a + sx * (length - inset), b + sy * inset, shade, thickness);
                     line(a + sx * inset, b + sy * inset, a + sx * inset, b + sy * (length - inset), shade, thickness);
                 };
+                if (bright)
+                {
+                    corner(0, {0, 0, 0, c.a * 0.6f}, 6.5f);
+                    corner(0, {c.r, c.g, c.b, c.a * 0.16f}, 5.5f);
+                    corner(0, {c.r, c.g, c.b, c.a * 0.3f}, 3.5f);
+                    corner(0, c, 1.5f);
+                    continue;
+                }
                 corner(-1, {0, 0, 0, c.a}, 3);
                 corner(0, c, 1);
                 corner(-2, {1, 1, 1, glow.a}, 2);
@@ -99,22 +122,24 @@ namespace
         const float left = center - width * 0.5f, bottom = top + height;
         const auto& palette = config.colors;
         const bool targeted = selected && p.actor_addr == selected;
-        const Color c = targeted ? color(aim_selection && data.isVisible ? config.selected_visible_color : palette.selected) : player_color(data, e.visible_color, e.not_visible_color);
+        const bool visible_target = targeted && aim_selection && data.isVisible;
+        const Color c = targeted ? color(visible_target ? config.selected_visible_color : palette.selected) : player_color(data, e.visible_color, e.not_visible_color);
         if (e.lines)
-            outlined_line(screen_width * 0.5f, static_cast<float>(screen_height), screen.x, screen.y, c);
+            outlined_line(screen_width * 0.5f, static_cast<float>(screen_height), screen.x, screen.y, c, 1.f, visible_target);
         if (e.box)
-            box(left, top, width, height, c);
+            box(left, top, width, height, c, visible_target);
         if (e.skeleton && std::isfinite(data.health) && data.health > 0 && data.has_bones && !data.is_in_vehicle && data.distance <= e.skeleton_distance)
         {
             const float ratio = data.distance / std::max(e.skeleton_distance, 1.f);
             Color skeleton = targeted ? c : player_color(data, palette.skeleton_visible, palette.skeleton_hidden);
-            skeleton.a *= std::clamp(1 - ratio, 0.4f, 1.f);
+            if (!visible_target)
+                skeleton.a *= std::clamp(1 - ratio, 0.4f, 1.f);
             for (const auto& pair : bones)
             {
                 const auto& a = projected_bones[pair[0]];
                 const auto& b = projected_bones[pair[1]];
                 if (a.valid && b.valid && std::fabs(a.x - b.x) < height * 2 && std::fabs(a.y - b.y) < height * 2)
-                    outlined_line(a.x, a.y, b.x, b.y, skeleton, std::max(1.5f, 2.5f - ratio));
+                    outlined_line(a.x, a.y, b.x, b.y, skeleton, std::max(1.5f, 2.5f - ratio), visible_target);
             }
         }
         if (e.health && data.max_health > 0)

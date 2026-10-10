@@ -1,23 +1,50 @@
-Held adjustment keys and on-screen values
+Configurable name-change key - X-Engine v1.0.4
 
-Top-row minus/equal (VK_OEM_MINUS/VK_OEM_PLUS) decrease/increase the shared world ESP render-distance cap by 50 meters, within 1-5000. Numpad Add/Subtract do not affect these controls. Brackets (VK_OEM_4/VK_OEM_6) adjust skeleton range by 25 meters, within 1-500. Up/Down adjust aim-circle FOV by 5 pixels, within 1-800; they do not change camera FOV. Each pair responds immediately, repeats after 300 ms, then repeats at 75 ms intervals while held. Both directions together cancel. Catch-up after a long frame stall is bounded to four steps. Aim-key capture reserves the controls and blocks a held captured key until release.
+Aim > Name change key now sits directly below Aim key. Click the button and press a keyboard or mouse key; Escape cancels. Enter remains the default. Hold aim until a player is highlighted, then press the configured name-change key. The shared key picker rejects the other action's current binding and reserved menu, label, distance/FOV and mortar-cycle keys. Feedback explains rejected bindings. Save settings explicitly to retain the selected key.
 
-A plain bottom-center panel shows the values currently being adjusted. It uses the existing Windows Tahoma renderer and menu colors, has no animations, and remains visible for one second after release. It renders with the menu open or closed and with no valid game snapshot. GetTickCount64 was already imported; it is sampled only while an adjustment key or its temporary indicator is active. No new imports, threads, locks, sleeps, frame caps, focus checks or overlay polling were added. Settings remain owned by the render thread and pass to the updater through the existing settings snapshot. Hotkey changes are saved only through the existing explicit Save action.
+The existing updater polls the configured virtual key in place of Enter, with no additional key poll. One request is allowed per press. Rebinding while the new key is down requires a release before triggering. Old Enter stops triggering when rebound, and same-key aim/name configurations cannot rename. The existing selected-target and game-window callback paths, safety checks, and name payload remain unchanged.
 
-Global render distance is implemented as a shared drawing cap for player, vehicle, dropped-item, explosive and bag overlays, with each category's existing smaller distance still applying. The cap does not alter targeting, mini radar, trajectory effects or entity collection. Its default 5000 meters preserves existing category limits. World > Global Distance exposes the same value. Version 8 appends this one float to settings; registry versions 1-7 and shared-string versions 3-7 migrate with the default cap, retaining prior settings. New shared strings use XENGINE8. Existing skeleton and FOV settings use their existing fields. The obsolete mortar-comment claim that brackets adjusted calibration was removed; the mortar solver code is unchanged.
+Settings version 10 appends one integer. Version 1-9 saves retain their existing fields and default this key to Enter. Sharing emits XENGINE10 and accepts versions 3-9 with their original lengths/checksums. Invalid/reserved imported name-change keys fall back to Enter. Prior target-color migration remains intact.
 
-Validation: 387 checks passed after a clean Desktop Release build. Regression coverage includes immediate and held adjustments, timing independent of polling frequency, long-stall catch-up, direction changes, opposing keys, numpad exclusion, clamping, simultaneous adjustments, key capture, indicator expiry, registry/shared-settings migration, and global/category range boundaries for all five world ESP categories. Existing radar filter rendering tests also run with a one-meter global cap to verify independence. Disposable-window screenshots verify the indicator with the menu closed/open and no residual pixels after expiry; the final bottom-center indicator and World menu captures were visually inspected. All tests use synthetic fixtures; no live injection or FPS measurement was performed.
+Validation: clean Desktop Release build; all 440 checks passed. Added checks cover independent menu capture, conflicts, Escape, restoring Enter, old/new settings persistence, custom trigger selection, held-key debouncing, rebind while held and same-key protection. The rendered menu was inspected. DLL: 377344 bytes (368.5 KiB), 118 imports (unchanged). No new threads, timers, Windows imports or additional update-loop API calls. String audit: 677 wrapped runtime literals, 579 distinct strings checked, zero unwrapped or plaintext source strings. Existing compiler-option warnings remain. No live-game injection was performed.
 
-The string audit found 654 wrapped application runtime literals, zero unwrapped literals, and no complete plaintext source strings outside import metadata among 560 distinct checked strings of at least four characters. All new runtime text uses xor_text. Existing Desktop output/compiler settings and the user's xor.h were preserved. No commit or push was performed.
-
-Final Desktop DLL: 368640 bytes (360.0 KiB), 7680 bytes above the preceding clean release.
-Imports: 118. Regression suite: 387 checks passed, 0 failures.
-SHA256: 39d745c25831fac0220723716e3a7f14f480b18884574345fe390b2b998e0933
+Desktop and staging source match. Desktop project/output settings and xor.h are unchanged. Build bumper advanced the title to v1.0.4. No commit or push was performed.
 
 DLL: C:\xampp\htdocs\downloads\dll.dll
-Wrapped runtime literal occurrences: 654
+SHA256: 1c3ae2697c88b06624b69d29664f440d70267421f33519d0424aeda2df77ba0f
+
+C:\xampp\htdocs\downloads\dll.dll
+Size: 377344 bytes (368.5 KiB)
+Imports: 118
+  KERNEL32.dll: 34
+  USER32.dll: 18
+  ADVAPI32.dll: 4
+  d3d9.dll: 1
+  d3d11.dll: 1
+  dxgi.dll: 1
+  d2d1.dll: 1
+  DWrite.dll: 1
+  MSVCP140.dll: 2
+  VCRUNTIME140.dll: 10
+  api-ms-win-crt-runtime-l1-1-0.dll: 11
+  api-ms-win-crt-string-l1-1-0.dll: 9
+  api-ms-win-crt-stdio-l1-1-0.dll: 2
+  api-ms-win-crt-math-l1-1-0.dll: 20
+  api-ms-win-crt-heap-l1-1-0.dll: 3
+SHA256: 1c3ae2697c88b06624b69d29664f440d70267421f33519d0424aeda2df77ba0f
+
+Previously measured rewrite before the hook fix: 173568 bytes (169.5 KiB), 99 imports; SHA256 f5be2d8a14ef7dad0cb8823300bd34a3603f6684fb99565a0ee6bc43e7f3fda6.
+
+Previously measured original DLL: 1534464 bytes (1498.5 KiB), 174 imports; SHA256 8bf7f802c8b678b648f15fb7d0c428166fe75608bcd18df0c8c40306db280251. This was an existing binary, not a rebuild of the original source.
+
+Source audit: no ImGui, JSON library, std::atomic/std::mutex/std::thread wrappers or lazy imports. The startup thread owns rendering; one additional thread owns game updates. One SRW lock protects snapshot swaps, settings and stop state. Optional Build X/auto join/anti-AFK and one-shot nickname requests use a second small SRW mailbox and private-message window-procedure callback on the game window thread. Window discovery occurs only when installing that callback; disabled actions do no recurring work. Clipboard APIs are called only by settings Copy/Paste. No focus, window-existence, Sleep or executable-memory patching imports remain. Optional actions attach and restore the game window procedure only at installation and shutdown. Overlay dimensions are read only at initialization. The update thread samples QueryPerformanceCounter once per iteration; rendering has no software cap and only samples GetTickCount64 while adjustment keys or their temporary value indicator are active. Presentation uses immediate mode and a one-frame driver queue limit; both shared surfaces retain their GPU completion checks. Render camera sampling uses guarded memory reads, with no native game calls. Actor and bone projections use one matrix per scan and a fresh matrix per draw.
+
+Tests include paused/incomplete scans, a busy handoff lock, 3000 concurrent publications with settings updates, invalid-world clearing and producer shutdown. Renderer tests retain asynchronous completion and fixed-size target coverage. Test-only waits and readback are excluded from the DLL.
+
+DLL: C:\xampp\htdocs\downloads\dll.dll
+Wrapped runtime literal occurrences: 677
 Compile-only sizeof/static_assert literals: 2
-Unique source strings checked in binary (4+ characters, null-terminated): 560
+Unique source strings checked in binary (4+ characters, null-terminated): 579
 Unwrapped runtime literals: 0
 Plaintext source strings found: 0
 Import-name substring matches (loader metadata):
@@ -26,6 +53,155 @@ Import-name substring matches (loader metadata):
 'exit' is part of PE import _cexit
 Scope: application-owned runtime literals in src. Includes, comments, diagnostics and literal lengths are compile-time syntax. PE import/export names and CRT-generated messages are outside xor.h; runtime-generated names/labels are not compile-time literals. Strings shorter than four characters are covered by the source check, not a conclusive binary search.
 
+
+
+C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.CppBuild.targets(524,5): warning MSB8004: Output Directory does not end with a trailing slash.  This build instance will add the slash as it is required to allow proper evaluation of the Output Directory. [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  X-Engine v1.0.4
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  actor_registry.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  aimbot.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  anti_sam.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  config.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  core.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  engine_funcs.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  game.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  extras.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  tracers.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-unwind-tables' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-mno-stack-arg-probe' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  game_actions.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-stack-clash-protection' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  magic_bullet.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-ffreestanding' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  menu.cpp
+cl : command line  warning D9002: ignoring unknown option '/clang:-fno-builtin-memcpy' [C:\Users\Administrator\Desktop\WD_transformation\re-write\wd.vcxproj]
+  mortar_aim.cpp
+  offsets.cpp
+  overlay.cpp
+  player_snapshot.cpp
+  prediction.cpp
+  projectile_subsystem.cpp
+  visuals.cpp
+  weapon_stats.cpp
+  world_actor_snapshot.cpp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 6209 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  wd.vcxproj -> C:\xampp\htdocs\downloads\dll.dll
+
+
+  actor_registry.cpp
+  aimbot.cpp
+  anti_sam.cpp
+  config.cpp
+  engine_funcs.cpp
+  game.cpp
+  extras.cpp
+  tracers.cpp
+  game_actions.cpp
+  magic_bullet.cpp
+  mortar_aim.cpp
+  offsets.cpp
+  menu.cpp
+  overlay.cpp
+  player_snapshot.cpp
+  prediction.cpp
+  projectile_subsystem.cpp
+  visuals.cpp
+  weapon_stats.cpp
+  world_actor_snapshot.cpp
+  Compiling...
+  main.cpp
+  frame_exchange.cpp
+  name_conversion.cpp
+  transitions.cpp
+  features.cpp
+  crowded.cpp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 6706 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  tests.vcxproj -> C:\Users\Administrator\Desktop\WD_transformation\re-write\build\wd-tests.exe
 
 PASS: XOR startup pointers survive their initializer
 PASS: XOR narrow and wide strings have stable storage for concurrent readers
@@ -40,7 +216,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 2902
+Concurrent snapshot reads: 2881
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -109,12 +285,16 @@ PASS: shared settings round trip with new feature fields
 PASS: shared settings preserve radar filters and 400 pixel size
 PASS: shared settings preserve the visible target color
 PASS: shared settings preserve a disabled Magic visibility bypass
-PASS: version 8 sharing preserves global distance and existing settings
+PASS: version 10 sharing preserves the name-change key and existing settings
+PASS: an explicitly saved zero Magic minimum survives the new default
 PASS: version 3 shared settings migrate radar options and retired feet labels
-PASS: version 4 shared settings keep custom colors and radar and add cyan visible targets
+PASS: version 4 shared settings keep custom colors and radar and add white visible targets
 PASS: version 5 shared settings enable Magic visibility bypass and preserve prior settings
-PASS: version 6 sharing defaults Magic minimum to zero and preserves prior choices
+PASS: version 6 sharing defaults Magic minimum to 100 meters and preserves prior choices
 PASS: version 7 shared settings preserve prior choices with a nonrestricting global cap
+PASS: version 8/9 sharing defaults name-change key to Enter and retains prior settings
+PASS: version 8/9 sharing defaults name-change key to Enter and retains prior settings
+PASS: current shared settings preserve deliberately picked cyan
 PASS: radar vehicle types can be selected independently
 PASS: automatic radar collection covers its supported range
 PASS: manual radar collection respects selected range
@@ -134,6 +314,19 @@ PASS: upward projectile accepts a target below it
 PASS: upward projectile reverses downward while preserving speed
 PASS: externally controlled projectiles are not modified
 PASS: projectiles without flight time are not modified
+PASS: close Silent intercepts a moving target with gravity from the live round, preserving speed
+PASS: close Silent intercepts a moving target with gravity from the live round, preserving speed
+PASS: close Silent intercepts a moving target with gravity from the live round, preserving speed
+PASS: close Silent intercepts a moving target with gravity from the live round, preserving speed
+PASS: close Silent intercepts a moving target with gravity from the live round, preserving speed
+PASS: close Silent intercepts a moving target with gravity from the live round, preserving speed
+PASS: Silent solves separate remaining flight times for simultaneous rounds at different speeds and positions
+PASS: Silent compensates drop below 100 meters without subtracting sight zeroing
+PASS: Silent compensates drop below 100 meters without subtracting sight zeroing
+PASS: disabling Prediction retains raw-bone Silent targeting
+PASS: Silent respects disabled velocity lead and bullet drop independently of Prediction
+PASS: invalid Silent prediction leaves projectile velocity unchanged
+PASS: failed Silent prediction does not consume the round's once-only redirect
 PASS: combined modes use Silent prediction below Magic minimum
 PASS: nearby Silent redirects the same round only once
 PASS: Magic starts exactly at the minimum and takes over an existing Silent round
@@ -178,6 +371,30 @@ PASS: an unavailable virtual ProcessEvent fails without calling through a null s
 PASS: anti AFK does not turn immediately when enabled
 PASS: anti AFK acts only after its interval
 PASS: create disposable Unreal window for action callback
+PASS: nickname request waits for the game-window callback even when all optional actions are off
+PASS: hidden highlighted target supplies a copied Unicode name with valid RPC termination
+PASS: nickname RPC runs on the window owner thread rather than the update worker
+PASS: holding Enter sends only one nickname request
+PASS: visible highlighted targets work after releasing and pressing Enter again
+PASS: Enter without an aim target does not rename later when a target appears while held
+PASS: Enter pressed in the menu stays blocked until release
+PASS: disabled aim blocks nickname copying
+PASS: Enter cannot act as both the aim key and nickname trigger
+PASS: invalid snapshots and selected vehicles cannot supply nicknames
+PASS: empty whitespace-only and control-character names never reach the RPC
+PASS: nickname payload retains all 32 supported characters and truncates longer names
+PASS: nickname length limit never splits a UTF-16 surrogate pair
+PASS: a second press cannot overwrite a queued nickname request
+PASS: reused controller identity cancels a queued nickname request
+PASS: leaving the match cancels a queued nickname request
+PASS: a different local controller cancels the queued nickname RPC
+PASS: ordinary action publications cannot discard a queued nickname request
+PASS: Enter stops triggering name changes after rebinding
+PASS: custom name-change key triggers the selected player's nickname
+PASS: holding a custom name-change key never repeats the request
+PASS: changing bindings while the new key is held waits for release
+PASS: new binding works after release and press
+PASS: loaded same-key aim and rename bindings cannot trigger a rename
 PASS: Build X publication waits for the window message callback
 PASS: menu status exposes an undelivered Build X callback
 PASS: window callback forwards unrelated messages and their return values
@@ -198,6 +415,7 @@ PASS: a wake consumed by nested dispatch is delivered after the outer callback r
 PASS: an unpumped faction request gets an explicit delivery diagnostic
 PASS: callback delivery recovers after the window starts pumping again
 PASS: callback cleanup restores the X before detaching
+PASS: shutdown cancels a queued nickname request before detaching
 PASS: shutdown restores the original game window procedure
 PASS: updates after shutdown cannot reinstall or run game actions
 PASS: render camera advances without changing or waiting for entity publication
@@ -222,7 +440,7 @@ PASS: invalid pointer ranges
 PASS: reject invalid pointer recorded in crash dump
 PASS: memory checks do not depend on local exception handlers
 PASS: settings validation
-PASS: invalid and default Magic minimum preserve prior behavior
+PASS: invalid and default Magic minimum use 100 meters
 PASS: invalid global render distance restores the nonrestricting default
 PASS: Magic minimum clamps to the slider maximum
 PASS: global render distance clamps to its maximum
@@ -234,20 +452,25 @@ PASS: visible target color survives save and load
 PASS: disabled Magic visibility bypass survives save and load
 PASS: Magic minimum distance survives save and load
 PASS: global render distance survives save and load
+PASS: custom name-change key survives save and load
 PASS: version 1 migration keeps custom settings and upgrades unchanged colors
 PASS: truncated version 2 settings are rejected
 PASS: version 2 migration supplies new defaults without overwriting old settings
 PASS: version 3 migration doubles the old default radar and preserves feature settings
-PASS: version 4 keeps custom hidden target color and defaults visible targets to cyan
+PASS: version 4 keeps custom hidden target color and defaults visible targets to white
 PASS: version 5 settings default Magic visibility bypass on and retain colors and radar
-PASS: version 6 settings preserve existing choices and add zero Magic minimum
+PASS: version 6 settings preserve existing choices and add 100 meter Magic minimum
 PASS: version 7 settings retain existing choices and default the global cap
-PASS: save version 8 settings
+PASS: version 8 upgrades old default cyan to white without resetting settings
+PASS: version 9 settings default name-change key to Enter without resetting colors or filters
+PASS: save version 10 settings
 PASS: radar filters survive save and load
+PASS: deliberately picked cyan survives save and load
 PASS: bad settings leave current state unchanged
 PASS: stationary trajectory
 PASS: velocity lead
 PASS: invalid trajectory rejected
+PASS: ordinary aim retains sight zeroing while live-projectile prediction compensates full drop
 PASS: renderer initializes on disposable window
 PASS: begin transparent frame
 PASS: DX9 presentation
@@ -256,7 +479,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.274 ms
+Busy-GPU stage 1 submission: 0.271 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -265,7 +488,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.157 ms
+Busy-GPU stage 2 submission: 0.148 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -274,7 +497,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.152 ms
+Busy-GPU stage 3 submission: 0.153 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -336,6 +559,12 @@ PASS: discard a click outside the menu after one frame
 PASS: outside click cannot activate a control after cursor movement
 PASS: released slider press retains its original position across skipped frames
 PASS: released pending slider does not keep dragging
+PASS: name-change key button binds independently of aim
+PASS: name-change binding rejects the current aim key
+PASS: aim binding rejects the current name-change key
+PASS: name-change binding preserves reserved adjustment hotkeys
+PASS: Escape cancels name-change key capture
+PASS: name-change binding can return to Enter
 PASS: combined modes expose a working Magic minimum slider
 PASS: capture Magic minimum slider and its help
 PASS: Magic-only hides the slider and retains its value
@@ -398,7 +627,7 @@ PASS: begin box geometry frame
 PASS: box uses head/root height and half-height width without skeleton drawing
 PASS: begin box geometry frame
 PASS: box uses head/root height and half-height width without skeleton drawing
-PASS: visible selected player is cyan
+PASS: visible selected player is bright white
 PASS: hidden selected player is yellow even with ESP visibility filtering off
 PASS: visible target uses the picked color
 PASS: releasing target selection restores the normal player color
@@ -409,7 +638,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.320 ms CPU average, 4.905 ms max; 9.789 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.313 ms CPU average, 4.998 ms max; 9.869 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -423,4 +652,4 @@ PASS: external presentation preserves pixels and alpha
 
 FullName                          Length
 --------                          ------
-C:\xampp\htdocs\downloads\dll.dll 368640
+C:\xampp\htdocs\downloads\dll.dll 377344

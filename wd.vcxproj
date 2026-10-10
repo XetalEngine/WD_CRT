@@ -104,10 +104,14 @@
     <ClInclude Include="src\structs.h" />
     <ClInclude Include="src\types.h" />
     <ClInclude Include="src\visuals.h" />
+    <ClInclude Include="src\version.h" />
     <ClInclude Include="src\weapon_stats.h" />
     <ClInclude Include="src\world_actor_snapshot.h" />
     <ClInclude Include="ultraglobal.h" />
     <ClInclude Include="xor.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="BumpVersion" BeforeTargets="ClCompile" Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipVersionBump)' != 'true'">
+    <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(ProjectDir)bump-version.ps1&quot;" />
+  </Target>
 </Project>

@@ -1063,6 +1063,7 @@ namespace game
             return;
         tracers::tick(output, read<std::uint32_t>(my_pawn + offsets::UObject::InternalIndex), observed_vehicle ? read<std::uint32_t>(observed_vehicle + offsets::UObject::InternalIndex) : 0, settings.extra.tracers, settings.extra.tracer_lifetime);
         output.valid = current_match(match);
+        game_actions::copy_target_name(output);
     }
 
     bool camera_for_render(const Snapshot& snapshot, CameraIPC& camera)

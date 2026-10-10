@@ -20,7 +20,6 @@ namespace
 #ifdef WD_TEST
     bool g_test_key_down = false;
 #endif
-    constexpr float kMagicShortRangeMeters = 50.f;
     // Helpers
     int bone_slot_for_config(int cfg_bone)
     {
@@ -333,13 +332,10 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
     const FVector aim_origin = muzzle_valid ? muzzle_position : camera.location;
 
     FVector aim_point = bone_pos;
-    // Magic Bullet retargets the live projectile directly.  Do not run the
-    // ordinary prediction solver in that mode: both gravity compensation and
-    // target-velocity lead would move the retarget point away from the raw
-    // selected bone.
-    if (!magic_active && prediction_settings.enabled && std::isfinite(local_bullet_speed) && local_bullet_speed >= 1000.f)
+    prediction::Input input{};
+    const bool predict = !magic_active && prediction_settings.enabled;
+    if (predict)
     {
-        prediction::Input input{};
         input.camera = aim_origin;
         input.target = bone_pos;
         input.target_velocity = best->player.velocity;
@@ -349,7 +345,9 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
         input.velocity_lead = prediction_settings.velocity_lead;
         input.bullet_drop = prediction_settings.bullet_drop;
 
-        const prediction::Result result = prediction::solve(input);
+        // Silent solves from each live round below. Only its optional preview
+        // uses the muzzle; ordinary camera aim keeps its sight-zeroed solution.
+        const prediction::Result result = (!settings.silent_aim || prediction_settings.show_line) ? prediction::solve(input, settings.silent_aim) : prediction::Result{};
         if (result.valid)
         {
             aim_point = result.aim_point;
@@ -373,13 +371,6 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
 
     if (settings.magic_bullet || settings.silent_aim)
     {
-        // At short range, muzzle-based prediction can overshoot because the
-        // projectile is already in flight. Keep the normal predicted point at
-        // range, but use the current bone position for close targets.
-        const FVector& magic_target =
-            (std::isfinite(best->player.distance) && best->player.distance < kMagicShortRangeMeters)
-                ? bone_pos
-                : aim_point;
         // Report the first redirect attempt even if selection became valid after the key press.
         const bool report_target = magic_active && !g_magic_reported_target;
         if (report_target)
@@ -387,7 +378,7 @@ void aimbot::tick(const std::vector<game::ProjectedPlayer>& players, void* contr
             g_magic_reported_target = true;
             log(xor_text("Magic: target=%p bone=%d visible=%d on update thread"), reinterpret_cast<void*>(best->actor_addr), aim_bone, best->player.isVisible);
         }
-        wdgs::magic_bullet::retarget_all(magic_target, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !magic_active, report_target);
+        wdgs::magic_bullet::retarget_all(bone_pos, camera.location, local_pawn_internal_index, local_vehicle_internal_index, !magic_active, report_target, predict ? &input : nullptr);
     }
 
     // Silent aim redirects a new local round once; Magic Bullet keeps steering it.

@@ -34,6 +34,11 @@ namespace
     Object session, state_type, manager_type, tool_type, decal_type, explosive_type, container_type;
     Object actor_type, scene_type, trace_type, string_type;
     Object faction_type;
+    Object controller_type, rename_fn;
+    int renamed = 0;
+    wchar_t renamed_name[33]{};
+    bool rename_terminated = false;
+    std::uintptr_t renamed_controller = 0;
     Object component_fn, eyes_fn, location_fn, trace_fn, reserve_fn, commit_fn, string_fn, library, get_rot_fn, set_rot_fn;
     std::uintptr_t pawn_address, item_address, manager_address, tool_address;
     int moved, traces, reserved, committed, rotated, event_calls;
@@ -80,6 +85,10 @@ namespace
         Object* out = nullptr;
         if (s == L"/Script/Engine.Actor")
             out = &actor_type;
+        else if (s == L"/Script/Engine.PlayerController")
+            out = &controller_type;
+        else if (s.find(L"ServerChangeName") != s.npos)
+            out = outer == controller_type.bytes ? &rename_fn : nullptr;
         else if (s == L"/Script/Engine.SceneComponent")
             out = &scene_type;
         else if (s == L"/Script/Engine.KismetSystemLibrary")
@@ -190,6 +199,15 @@ namespace
         }
         else if (function == set_rot_fn.bytes)
             ++rotated;
+        else if (function == rename_fn.bytes)
+        {
+            const auto name = *reinterpret_cast<TArray<wchar_t>*>(params);
+            rename_terminated = name.Count >= 2 && name.Count <= 33 && name.Max == name.Count && name.Data[name.Count - 1] == L'\0';
+            if (rename_terminated)
+                wcsncpy_s(renamed_name, name.Data, _TRUNCATE);
+            renamed_controller = obj;
+            ++renamed;
+        }
     }
 
     void __fastcall virtual_event(void* object, void* function, void* params)
@@ -283,13 +301,18 @@ int test_features()
     settings.magic_ignore_visibility = false;
     settings.magic_min_distance = 250;
     settings.render_distance = 900;
+    settings.name_change_key = VK_F6;
     const auto encoded = encode_config(settings);
     Config decoded;
     check(decode_config(encoded.c_str(), encoded.size(), decoded) && decoded.extra.build_x && decoded.extra.tracer_style == 3 && decoded.extra.tracer_color[1] == 0.37f, "shared settings round trip with new feature fields");
     check(decoded.esp.minimap_size == 400 && decoded.radar.items && decoded.radar.bags && !decoded.radar.helicopters, "shared settings preserve radar filters and 400 pixel size");
     check(decoded.selected_visible_color[0] == 0.45f && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "shared settings preserve the visible target color");
     check(!decoded.magic_ignore_visibility, "shared settings preserve a disabled Magic visibility bypass");
-    check(encoded.compare(0, 9, "XENGINE8:") == 0 && decoded.magic_min_distance == 250 && decoded.render_distance == 900, "version 8 sharing preserves global distance and existing settings");
+    check(encoded.compare(0, 10, "XENGINE10:") == 0 && decoded.name_change_key == VK_F6 && decoded.magic_min_distance == 250 && decoded.render_distance == 900, "version 10 sharing preserves the name-change key and existing settings");
+    decoded.magic_min_distance = 0;
+    const auto zero_minimum = encode_config(decoded);
+    decoded = {};
+    check(decode_config(zero_minimum.c_str(), zero_minimum.size(), decoded) && decoded.magic_min_distance == 0, "an explicitly saved zero Magic minimum survives the new default");
     Config old_settings;
     old_settings.esp.minimap_size = 200;
     old_settings.esp.vehicles = false;
@@ -325,7 +348,7 @@ int test_features()
     }
     snprintf(checksum, sizeof(checksum), "%08X", hash);
     legacy += checksum;
-    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.colors.selected[2] == 0.4f && decoded.radar.bags && decoded.esp.minimap_size == 200 && decoded.selected_visible_color[0] == 0 && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "version 4 shared settings keep custom colors and radar and add cyan visible targets");
+    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.colors.selected[2] == 0.4f && decoded.radar.bags && decoded.esp.minimap_size == 200 && decoded.selected_visible_color[0] == 1 && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "version 4 shared settings keep custom colors and radar and add white visible targets");
     old_settings.selected_visible_color[0] = 0.2f;
     unsigned char v5_bytes[4 + offsetof(Config, magic_ignore_visibility)]{5};
     memcpy(v5_bytes + 4, &old_settings, offsetof(Config, magic_ignore_visibility));
@@ -356,7 +379,7 @@ int test_features()
     }
     snprintf(checksum, sizeof(checksum), "%08X", hash);
     legacy += checksum;
-    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.magic_min_distance == 0 && !decoded.magic_ignore_visibility && decoded.selected_visible_color[0] == 0.2f && decoded.radar.bags, "version 6 sharing defaults Magic minimum to zero and preserves prior choices");
+    check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.magic_min_distance == 100 && !decoded.magic_ignore_visibility && decoded.selected_visible_color[0] == 0.2f && decoded.radar.bags, "version 6 sharing defaults Magic minimum to 100 meters and preserves prior choices");
     unsigned char v7_bytes[4 + offsetof(Config, render_distance)]{7};
     memcpy(v7_bytes + 4, &old_settings, offsetof(Config, render_distance));
     legacy = "XENGINE7:";
@@ -371,6 +394,28 @@ int test_features()
     snprintf(checksum, sizeof(checksum), "%08X", hash);
     legacy += checksum;
     check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.render_distance == 5000 && decoded.magic_min_distance == 500 && !decoded.magic_ignore_visibility, "version 7 shared settings preserve prior choices with a nonrestricting global cap");
+    old_settings.selected_visible_color[0] = 0;
+    unsigned char v8_bytes[4 + offsetof(Config, name_change_key)]{};
+    memcpy(v8_bytes + 4, &old_settings, offsetof(Config, name_change_key));
+    for (unsigned char version : {8, 9})
+    {
+        v8_bytes[0] = version;
+        legacy = version == 8 ? "XENGINE8:" : "XENGINE9:";
+        hash = 2166136261u;
+        for (unsigned char byte : v8_bytes)
+        {
+            char hex[3];
+            snprintf(hex, sizeof(hex), "%02X", byte);
+            legacy += hex;
+            hash = (hash ^ byte) * 16777619u;
+        }
+        snprintf(checksum, sizeof(checksum), "%08X", hash);
+        legacy += checksum;
+        decoded.name_change_key = VK_F7;
+        check(decode_config(legacy.c_str(), legacy.size(), decoded) && decoded.selected_visible_color[0] == (version == 8 ? 1 : 0) && decoded.name_change_key == VK_RETURN && decoded.magic_min_distance == 500 && decoded.radar.bags, "version 8/9 sharing defaults name-change key to Enter and retains prior settings");
+    }
+    const auto picked_cyan = encode_config(old_settings);
+    check(decode_config(picked_cyan.c_str(), picked_cyan.size(), decoded) && decoded.selected_visible_color[0] == 0 && decoded.selected_visible_color[1] == 1 && decoded.selected_visible_color[2] == 1, "current shared settings preserve deliberately picked cyan");
     using wdgs::actors::Kind;
     check(radar_vehicle_visible(settings, Kind::boat) && radar_vehicle_visible(settings, Kind::buggy) && !radar_vehicle_visible(settings, Kind::heli), "radar vehicle types can be selected independently");
     check(radar_scan_range(settings) == 5000, "automatic radar collection covers its supported range");
@@ -452,7 +497,8 @@ int test_features()
         prediction.bullet_drop = prediction.show_line = false;
         target.player.velocity = {0, 1000, 0};
         game::PredictionLine line;
-        float minimum = 100;
+        float minimum = Config{}.magic_min_distance;
+        float zeroing = 0, gravity = 0;
         bool ignore_visibility = true, menu_visible = false;
         const auto fresh_round = [&]()
         {
@@ -464,13 +510,81 @@ int test_features()
         {
             target.player.distance = distance;
             target.player.bones[BONE_HEAD] = bone;
-            aimbot::tick(targets, controller.bytes, camera, aim, prediction, 10000, 0, 0, line, {}, false, {}, 10, 12, menu_visible, ignore_visibility, minimum);
+            aimbot::tick(targets, controller.bytes, camera, aim, prediction, 10000, zeroing, gravity, line, {}, false, {}, 10, 12, menu_visible, ignore_visibility, minimum);
             return read<FVector>(projectile.addr() + velocity_offset);
         };
         aimbot::reset();
         aimbot::test_key(true);
+        // Integrate the resulting velocity to the moving target's X plane.
+        // This checks impact position, independently of the prediction solver.
+        const auto miss = [](FVector start, FVector velocity, FVector bone, FVector movement, double acceleration)
+        {
+            const double time = (bone.X - start.X) / (velocity.X - movement.X);
+            FVector impact = start + velocity * time;
+            impact.Z -= 0.5 * acceleration * time * time;
+            return impact.Distance(bone + movement * time);
+        };
+        zeroing = 100;
+        gravity = 1;
+        prediction.bullet_drop = true;
+        target.player.velocity = {100, 600, 100};
+        for (float distance : {5.f, 25.f, 49.f, 50.f, 75.f, 99.f})
+        {
+            fresh_round();
+            const FVector start{distance * 25, 0, 100};
+            const FVector bone{distance * 100, 0, 100};
+            projectile.put(location_offset, start);
+            projectile.put(velocity_offset, FVector{0, 0, 46300});
+            const auto velocity = tick(distance, bone);
+            check(miss(start, velocity, bone, target.player.velocity, 980) < 0.05 && std::fabs(velocity.Length() - 46300) < 0.001, "close Silent intercepts a moving target with gravity from the live round, preserving speed");
+        }
         fresh_round();
-        auto velocity = tick(99, {10000, 0, 100});
+        const FVector bone{7500, 0, 100};
+        const FVector first_start{500, 0, 100}, second_start{2500, 0, 100};
+        projectile.put(location_offset, first_start);
+        projectile.put(velocity_offset, FVector{46300, 0, 0});
+        projectile.put(instance_stride + location_offset, second_start);
+        projectile.put(instance_stride + velocity_offset, FVector{20000, 0, 0});
+        projectile.put(instance_stride + owner_internal_index_offset, std::uint32_t(10));
+        projectile.put(instance_stride + flight_time_offset, 0.5);
+        subsystem.put(allocated_offset, std::uint32_t(2));
+        subsystem.put(inline_bits_offset, std::uint32_t(3));
+        const auto first_velocity = tick(75, bone);
+        const auto second_velocity = read<FVector>(projectile.addr() + instance_stride + velocity_offset);
+        check(miss(first_start, first_velocity, bone, target.player.velocity, 980) < 0.05 && miss(second_start, second_velocity, bone, target.player.velocity, 980) < 0.05, "Silent solves separate remaining flight times for simultaneous rounds at different speeds and positions");
+        subsystem.put(allocated_offset, std::uint32_t(1));
+        subsystem.put(inline_bits_offset, std::uint32_t(1));
+        projectile.put(location_offset, FVector{0, 0, 100});
+        target.player.velocity = {};
+        for (float distance : {25.f, 75.f})
+        {
+            fresh_round();
+            projectile.put(velocity_offset, FVector{46300, 0, 0});
+            const FVector stationary{distance * 100, 0, 100};
+            const auto velocity = tick(distance, stationary);
+            check(velocity.Z > 0 && miss({0, 0, 100}, velocity, stationary, {}, 980) < 0.05, "Silent compensates drop below 100 meters without subtracting sight zeroing");
+        }
+        target.player.velocity = {0, 1000, 0};
+        prediction.enabled = false;
+        fresh_round();
+        auto velocity = tick(25, {2500, 0, 100});
+        check(velocity.X == 10000 && velocity.Y == 0 && velocity.Z == 0, "disabling Prediction retains raw-bone Silent targeting");
+        prediction.enabled = true;
+        prediction.velocity_lead = prediction.bullet_drop = false;
+        fresh_round();
+        velocity = tick(25, {2500, 0, 100});
+        check(velocity.X == 10000 && velocity.Y == 0 && velocity.Z == 0, "Silent respects disabled velocity lead and bullet drop independently of Prediction");
+        prediction.velocity_lead = true;
+        fresh_round();
+        target.player.velocity.Y = std::numeric_limits<double>::quiet_NaN();
+        velocity = tick(25, {2500, 0, 100});
+        check(velocity.X == 10000 && velocity.Y == 0 && velocity.Z == 0, "invalid Silent prediction leaves projectile velocity unchanged");
+        target.player.velocity.Y = 1000;
+        velocity = tick(25, {2500, 0, 100});
+        check(velocity.Y > 0, "failed Silent prediction does not consume the round's once-only redirect");
+        zeroing = gravity = 0;
+        fresh_round();
+        velocity = tick(99, {10000, 0, 100});
         check(velocity.Y > 0, "combined modes use Silent prediction below Magic minimum");
         const auto once = velocity;
         velocity = tick(99, {0, 10000, 100});
@@ -589,6 +703,8 @@ int test_features()
     std::uintptr_t state_vtable[0x4D]{};
     state_vtable[0x4C] = reinterpret_cast<std::uintptr_t>(&virtual_event);
     ps.put(offsets::UObject::VTable, reinterpret_cast<std::uintptr_t>(state_vtable));
+    controller.put(offsets::UObject::VTable, reinterpret_cast<std::uintptr_t>(state_vtable));
+    rename_fn.put(offsets::UObject::OuterPrivate, controller_type.addr());
     alignas(8) unsigned char names[2048]{};
     std::uintptr_t name_pool[3]{0, 0, reinterpret_cast<std::uintptr_t>(names)};
     offsets::GNames = reinterpret_cast<std::uintptr_t>(name_pool) - 1;
@@ -777,17 +893,20 @@ int test_features()
             for (int i = 0; i < 128 && PeekMessageA(&message, nullptr, 0, 0, PM_REMOVE); ++i)
                 DispatchMessageA(&message);
         };
-        const auto publish = [&](const Config& options, bool menu)
+        const auto publish = [&](const Config& options, bool menu, const game::Snapshot* selected = nullptr)
         {
             struct Input
             {
                 const Config& options;
                 bool menu;
-            } input{options, menu};
+                const game::Snapshot* selected;
+            } input{options, menu, selected};
             const auto worker = CreateThread(nullptr, 0, [](void* value) -> DWORD
                                              {
                 const auto& input = *static_cast<Input*>(value);
                 game_actions::update(input.options, input.menu);
+                if (input.selected)
+                    game_actions::copy_target_name(*input.selected);
                 return 0; }, &input, 0, nullptr);
             if (!worker || WaitForSingleObject(worker, 5000) != WAIT_OBJECT_0)
             {
@@ -796,6 +915,145 @@ int test_features()
             }
             CloseHandle(worker);
         };
+        Object named_pawn, named_state;
+        named_pawn.put(offsets::APawn::PlayerState, named_state.addr());
+        named_state.put(offsets::APlayerState::PawnPrivate, named_pawn.addr());
+        const auto player_name = [&](const wchar_t* value)
+        {
+            TArray<wchar_t> name;
+            name.Data = const_cast<wchar_t*>(value);
+            name.Count = name.Max = static_cast<int>(wcslen(value)) + 1;
+            named_state.put(offsets::APlayerState::PlayerNamePrivate, name);
+        };
+        game::Snapshot selected;
+        selected.valid = true;
+        selected.world = world.addr();
+        selected.controller = controller.addr();
+        selected.aim_selected_actor = named_pawn.addr();
+        selected.players.resize(2);
+        selected.players[0].actor_addr = pawn.addr();
+        selected.players[1].actor_addr = named_pawn.addr();
+        selected.players[1].player.isVisible = false;
+        wcscpy_s(selected.players[1].player.player_name, L"cached name differs");
+        settings = {};
+        frame_ticks = 25000;
+        const auto press_name = [&](bool menu = false)
+        {
+            game_actions::test_name_key(0);
+            publish(settings, menu, &selected);
+            game_actions::test_name_key(settings.name_change_key);
+            publish(settings, menu, &selected);
+        };
+        player_name(L"  Target_\u6D4B\u8BD5  ");
+        press_name();
+        check(renamed == 0, "nickname request waits for the game-window callback even when all optional actions are off");
+        player_name(L"ChangedAfterQueue");
+        pump();
+        check(renamed == 1 && rename_terminated && wcscmp(renamed_name, L"Target_\u6D4B\u8BD5") == 0 && renamed_controller == controller.addr(), "hidden highlighted target supplies a copied Unicode name with valid RPC termination");
+        check(event_thread == GetCurrentThreadId(), "nickname RPC runs on the window owner thread rather than the update worker");
+        for (int i = 0; i < 8; ++i)
+            publish(settings, false, &selected);
+        pump();
+        check(renamed == 1, "holding Enter sends only one nickname request");
+        selected.players[1].player.isVisible = true;
+        press_name();
+        pump();
+        check(renamed == 2 && wcscmp(renamed_name, L"ChangedAfterQueue") == 0, "visible highlighted targets work after releasing and pressing Enter again");
+        selected.aim_selected_actor = 0;
+        press_name();
+        selected.aim_selected_actor = named_pawn.addr();
+        publish(settings, false, &selected);
+        pump();
+        check(renamed == 2, "Enter without an aim target does not rename later when a target appears while held");
+        press_name(true);
+        publish(settings, false, &selected);
+        pump();
+        check(renamed == 2, "Enter pressed in the menu stays blocked until release");
+        settings.aimbot.enabled = false;
+        press_name();
+        pump();
+        check(renamed == 2, "disabled aim blocks nickname copying");
+        settings.aimbot.enabled = true;
+        settings.aimbot.key = VK_RETURN;
+        press_name();
+        pump();
+        check(renamed == 2, "Enter cannot act as both the aim key and nickname trigger");
+        settings.aimbot.key = VK_LBUTTON;
+        selected.valid = false;
+        press_name();
+        selected.valid = true;
+        selected.players[1].is_vehicle = true;
+        press_name();
+        selected.players[1].is_vehicle = false;
+        pump();
+        check(renamed == 2, "invalid snapshots and selected vehicles cannot supply nicknames");
+        for (const auto name : {L"", L" \t ", L"bad\nname", L"bad\x7f"})
+        {
+            player_name(name);
+            press_name();
+            pump();
+        }
+        check(renamed == 2, "empty whitespace-only and control-character names never reach the RPC");
+        player_name(L"12345678901234567890123456789012EXTRA");
+        press_name();
+        pump();
+        check(renamed == 3 && rename_terminated && wcscmp(renamed_name, L"12345678901234567890123456789012") == 0, "nickname payload retains all 32 supported characters and truncates longer names");
+        player_name(L"1234567890123456789012345678901\xD83D\xDE00");
+        press_name();
+        pump();
+        check(renamed == 4 && wcslen(renamed_name) == 31, "nickname length limit never splits a UTF-16 surrogate pair");
+        player_name(L"FirstQueuedName");
+        press_name();
+        player_name(L"MustNotReplacePendingName");
+        press_name();
+        pump();
+        check(renamed == 5 && wcscmp(renamed_name, L"FirstQueuedName") == 0, "a second press cannot overwrite a queued nickname request");
+        press_name();
+        controller.put(offsets::UObject::NamePrivate, FNameValue{1, 2});
+        pump();
+        controller.put(offsets::UObject::NamePrivate, FNameValue{1, 0});
+        check(renamed == 5, "reused controller identity cancels a queued nickname request");
+        press_name();
+        world_pointer = 0;
+        pump();
+        world_pointer = world.addr();
+        check(renamed == 5, "leaving the match cancels a queued nickname request");
+        press_name();
+        local.put(offsets::UPlayer::PlayerController, pawn.addr());
+        pump();
+        local.put(offsets::UPlayer::PlayerController, controller.addr());
+        check(renamed == 5, "a different local controller cancels the queued nickname RPC");
+        press_name();
+        publish(settings, false);
+        pump();
+        check(renamed == 6, "ordinary action publications cannot discard a queued nickname request");
+        settings.name_change_key = VK_F6;
+        game_actions::test_name_key(VK_RETURN);
+        publish(settings, false, &selected);
+        pump();
+        check(renamed == 6, "Enter stops triggering name changes after rebinding");
+        press_name();
+        pump();
+        check(renamed == 7, "custom name-change key triggers the selected player's nickname");
+        for (int i = 0; i < 8; ++i)
+            publish(settings, false, &selected);
+        pump();
+        check(renamed == 7, "holding a custom name-change key never repeats the request");
+        settings.name_change_key = VK_F7;
+        game_actions::test_name_key(VK_F7);
+        publish(settings, false, &selected);
+        publish(settings, false, &selected);
+        pump();
+        check(renamed == 7, "changing bindings while the new key is held waits for release");
+        press_name();
+        pump();
+        check(renamed == 8, "new binding works after release and press");
+        settings.aimbot.key = VK_F7;
+        press_name();
+        pump();
+        check(renamed == 8, "loaded same-key aim and rename bindings cannot trigger a rename");
+        settings.aimbot.key = VK_LBUTTON;
+        game_actions::test_name_key(0);
         decal.put(0x230, original);
         settings.extra.build_x = true;
         settings.aimbot.enabled = false;
@@ -883,10 +1141,14 @@ int test_features()
         frame_ticks += 16;
         publish(settings, false);
         pump();
+        const int before_stop_rename = renamed;
+        settings.aimbot.enabled = true;
+        press_name();
         game_actions::stop();
         while (PeekMessageA(&wake, action_window, WM_APP, 0xBFFF, PM_REMOVE))
             DispatchMessageA(&wake);
         check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "callback cleanup restores the X before detaching");
+        check(renamed == before_stop_rename, "shutdown cancels a queued nickname request before detaching");
         check(reinterpret_cast<WNDPROC>(GetWindowLongPtrW(action_window, GWLP_WNDPROC)) == action_proc && SendMessageW(action_window, WM_APP + 42, 20, 22) == 42, "shutdown restores the original game window procedure");
         const int after_stop = event_calls;
         frame_ticks += 5000;

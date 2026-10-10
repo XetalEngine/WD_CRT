@@ -1,4 +1,4 @@
-param([switch]$Rebuild, [switch]$Test)
+param([switch]$Rebuild, [switch]$Test, [switch]$SkipVersionBump)
 $ErrorActionPreference = 'Stop'
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
@@ -8,6 +8,7 @@ function Build-Project([string]$project) {
     $info = New-Object System.Diagnostics.ProcessStartInfo
     $info.FileName = $msbuild
     $info.Arguments = '"' + $project + '" /p:Configuration=Release /p:Platform=x64 /t:' + $target + ' /nologo /v:minimal'
+    if ($SkipVersionBump) { $info.Arguments += ' /p:SkipVersionBump=true' }
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
     $info.RedirectStandardOutput = $true

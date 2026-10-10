@@ -28,7 +28,7 @@ namespace
         result_count
     };
 
-    Result retarget(const wdgs::projectile_subsystem::Instance& instance, const FVector& target, std::uint32_t pawn, std::uint32_t vehicle)
+    Result retarget(const wdgs::projectile_subsystem::Instance& instance, const FVector& target, std::uint32_t pawn, std::uint32_t vehicle, const prediction::Input* trajectory)
     {
         const auto local = [pawn, vehicle](std::uint32_t index)
         {
@@ -45,9 +45,23 @@ namespace
         if (!finite(instance.location) || !finite(instance.velocity))
             return invalid_trajectory;
         const double speed = instance.velocity.Length();
-        const FVector delta = target - instance.location;
+        if (!std::isfinite(speed) || speed < 100 || speed > 200000)
+            return invalid_trajectory;
+        FVector aim = target;
+        if (trajectory)
+        {
+            auto input = *trajectory;
+            input.camera = instance.location;
+            input.target = target;
+            input.bullet_speed = static_cast<float>(speed);
+            const auto result = prediction::solve(input, true);
+            if (!result.valid)
+                return invalid_trajectory;
+            aim = result.aim_point;
+        }
+        const FVector delta = aim - instance.location;
         const double distance = delta.Length();
-        if (!std::isfinite(speed) || speed < 100 || speed > 200000 || !std::isfinite(distance) || distance < 25)
+        if (!std::isfinite(distance) || distance < 25)
             return invalid_trajectory;
         return write<FVector>(instance.address + wdgs::projectile_subsystem::velocity_offset, delta * (speed / distance)) ? redirected : write_failed;
     }
@@ -66,7 +80,7 @@ bool wdgs::magic_bullet::probe(const FVector&)
     return projectile_subsystem::acquire(pool);
 }
 
-bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std::uint32_t pawn, std::uint32_t vehicle, bool once, bool report)
+bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std::uint32_t pawn, std::uint32_t vehicle, bool once, bool report, const prediction::Input* trajectory)
 {
     if (!finite(target) || !pawn)
     {
@@ -102,7 +116,7 @@ bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std
         previous.time = instance.flight_time;
         if (once && previous.redirected)
             continue;
-        const auto result = retarget(instance, target, pawn, vehicle);
+        const auto result = retarget(instance, target, pawn, vehicle, once ? trajectory : nullptr);
         if (report)
             ++counts[result];
         if (result == redirected)
@@ -119,6 +133,6 @@ bool wdgs::magic_bullet::retarget_all(const FVector& target, const FVector&, std
 #ifdef WD_TEST
 bool wdgs::magic_bullet::test_retarget(const wdgs::projectile_subsystem::Instance& round, const FVector& target, std::uint32_t pawn, std::uint32_t vehicle)
 {
-    return retarget(round, target, pawn, vehicle) == redirected;
+    return retarget(round, target, pawn, vehicle, nullptr) == redirected;
 }
 #endif

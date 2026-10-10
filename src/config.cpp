@@ -13,10 +13,17 @@ namespace
 #endif
     struct Stored
     {
-        DWORD version = 8;
+        DWORD version = 10;
         Config data;
     };
     static_assert(offsetof(Config, colors) == 184, "Keep the version 1 settings prefix intact");
+
+    void migrate_target_color(Stored& stored)
+    {
+        auto& c = stored.data.selected_visible_color;
+        if (stored.version < 9 && c[0] == 0 && c[1] == 1 && c[2] == 1 && c[3] == 1)
+            c[0] = 1;
+    }
 
     void limit(float& value, float low, float high, float fallback)
     {
@@ -72,10 +79,17 @@ float radar_scan_range(const Config& value)
     return value.esp.minimap ? (value.esp.minimap_auto_range ? 5000.f : value.esp.minimap_range) : 0.f;
 }
 
+bool bindable_key(int key)
+{
+    return key > 0 && key < 255 && key != VK_ESCAPE && key != VK_INSERT && key != VK_END && key != VK_BACK && key != VK_UP && key != VK_DOWN && key != VK_PRIOR && key != VK_NEXT && key != VK_OEM_MINUS && key != VK_OEM_PLUS && key != VK_OEM_4 && key != VK_OEM_6;
+}
+
 void validate_config(Config& value)
 {
+    if (!bindable_key(value.name_change_key))
+        value.name_change_key = VK_RETURN;
     normalize_bool(value.magic_ignore_visibility);
-    limit(value.magic_min_distance, 0, 1000, 0);
+    limit(value.magic_min_distance, 0, 1000, 100);
     limit(value.render_distance, 1, 5000, 5000);
     auto& e = value.esp;
     for (bool* b : {&e.enabled, &e.agent_name, &e.skeleton, &e.box, &e.lines, &e.health, &e.distance, &e.visible_check, &e.team, &e.loot, &e.vehicles, &e.minimap, &e.minimap_auto_range, &value.aimbot.enabled, &value.aimbot.draw_fov, &value.aimbot.visible_check, &value.aimbot.team_check, &value.aimbot.silent_aim, &value.aimbot.magic_bullet, &value.prediction.enabled, &value.prediction.bullet_drop, &value.prediction.velocity_lead, &value.prediction.show_line, &value.anti_sam.auto_flare, &value.anti_sam.flare_warning, &value.mortar.mortar_aim})
@@ -130,7 +144,7 @@ void validate_config(Config& value)
 bool save_config()
 {
     validate_config(config);
-    Stored stored{8, config};
+    Stored stored{10, config};
     HKEY opened;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, key, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &opened, nullptr) != ERROR_SUCCESS)
         return false;
@@ -165,7 +179,7 @@ bool load_config()
     }
     else if (stored.version == 4 && size == offsetof(Stored, data) + offsetof(Config, selected_visible_color))
     {
-        // Keep the previous selected color for hidden targets; visible defaults to cyan.
+        // Keep the previous selected color for hidden targets; visible defaults to white.
     }
     else if (stored.version == 5 && size == offsetof(Stored, data) + offsetof(Config, magic_ignore_visibility))
     {
@@ -173,16 +187,21 @@ bool load_config()
     }
     else if (stored.version == 6 && size == offsetof(Stored, data) + offsetof(Config, magic_min_distance))
     {
-        // Zero preserves Magic at every distance when upgrading older settings.
+        // Older settings inherit the default Magic minimum distance.
     }
     else if (stored.version == 7 && size == offsetof(Stored, data) + offsetof(Config, render_distance))
     {
         // The default cap leaves all existing category limits unchanged.
     }
-    else if (stored.version != 8 || size != sizeof(stored))
+    else if ((stored.version == 8 || stored.version == 9) && size == offsetof(Stored, data) + offsetof(Config, name_change_key))
+    {
+        // Older settings keep Enter for nickname copying.
+    }
+    else if (stored.version != 10 || size != sizeof(stored))
         return false;
     if (stored.version < 4)
         migrate_radar(stored.data);
+    migrate_target_color(stored);
     validate_config(stored.data);
     config = stored.data;
     return true;
@@ -190,12 +209,12 @@ bool load_config()
 
 std::string encode_config(const Config& value)
 {
-    Stored stored{8, value};
+    Stored stored{10, value};
     validate_config(stored.data);
     const auto bytes = reinterpret_cast<const unsigned char*>(&stored);
     const char* hex = xor_text("0123456789ABCDEF");
-    std::string result = xor_text("XENGINE8:");
-    result.reserve(9 + sizeof(stored) * 2 + 8);
+    std::string result = xor_text("XENGINE10:");
+    result.reserve(10 + sizeof(stored) * 2 + 8);
     std::uint32_t hash = 2166136261u;
     for (std::size_t i = 0; i < sizeof(stored); ++i)
     {
@@ -213,9 +232,13 @@ bool decode_config(const char* text, std::size_t length, Config& value)
 {
     if (!text || length < 17)
         return false;
-    if (memcmp(text, xor_text("XENGINE"), 7) || text[8] != ':' || text[7] < '3' || text[7] > '8')
+    if (memcmp(text, xor_text("XENGINE"), 7))
         return false;
-    const DWORD version = text[7] - '0';
+    const bool current = text[7] == '1' && text[8] == '0';
+    const std::size_t prefix = current ? 10 : 9;
+    if (text[prefix - 1] != ':' || (!current && (text[7] < '3' || text[7] > '9')))
+        return false;
+    const DWORD version = current ? 10 : text[7] - '0';
     std::size_t stored_size = sizeof(Stored);
     if (version == 3)
         stored_size = offsetof(Stored, data) + offsetof(Config, radar);
@@ -227,7 +250,9 @@ bool decode_config(const char* text, std::size_t length, Config& value)
         stored_size = offsetof(Stored, data) + offsetof(Config, magic_min_distance);
     else if (version == 7)
         stored_size = offsetof(Stored, data) + offsetof(Config, render_distance);
-    if (length != 9 + stored_size * 2 + 8)
+    else if (version == 8 || version == 9)
+        stored_size = offsetof(Stored, data) + offsetof(Config, name_change_key);
+    if (length != prefix + stored_size * 2 + 8)
         return false;
     const auto digit = [](char c)
     { return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10
@@ -237,7 +262,7 @@ bool decode_config(const char* text, std::size_t length, Config& value)
     std::uint32_t hash = 2166136261u, expected = 0;
     for (std::size_t i = 0; i < stored_size; ++i)
     {
-        const int high = digit(text[9 + i * 2]), low = digit(text[10 + i * 2]);
+        const int high = digit(text[prefix + i * 2]), low = digit(text[prefix + i * 2 + 1]);
         if (high < 0 || low < 0)
             return false;
         bytes[i] = static_cast<unsigned char>((high << 4) | low);
@@ -254,6 +279,7 @@ bool decode_config(const char* text, std::size_t length, Config& value)
         return false;
     if (version < 4)
         migrate_radar(stored.data);
+    migrate_target_color(stored);
     validate_config(stored.data);
     value = stored.data;
     return true;

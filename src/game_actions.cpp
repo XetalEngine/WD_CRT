@@ -2,9 +2,21 @@
 #include "extras.h"
 #include "hook_process_event.h"
 #include "visual_math.h"
+#include "game.h"
 
 namespace
 {
+    struct Rename
+    {
+        std::uintptr_t world = 0, controller = 0;
+        FNameValue identity{};
+        wchar_t name[33]{};
+    } name_request;
+    bool name_down = false, name_pressed = false;
+    int name_key = VK_RETURN;
+#ifdef WD_TEST
+    int test_name_key_down = 0;
+#endif
     struct Request
     {
         bool build = false, join = false, afk = false, aiming = false, menu = false;
@@ -81,16 +93,16 @@ namespace
         return engine::call_process_event(reinterpret_cast<void*>(p), fn, data);
     }
 
-    bool faction_call(std::uintptr_t player_state, void* fn, void* data)
+    bool rpc_call(std::uintptr_t object, void* fn, void* data)
     {
-        if (!live(player_state) || !engine::is_live_object(fn))
+        if (!live(object) || !engine::is_live_object(fn))
             return false;
         // SPOT dispatches through the object's virtual ProcessEvent slot.
-        const auto table = read<std::uintptr_t>(player_state);
+        const auto table = read<std::uintptr_t>(object);
         const auto address = read<std::uintptr_t>(table + 0x4C * sizeof(std::uintptr_t));
         if (!is_valid_ptr(reinterpret_cast<void*>(address)))
             return false;
-        reinterpret_cast<engine::ProcessEventFn>(address)(reinterpret_cast<void*>(player_state), fn, data);
+        reinterpret_cast<engine::ProcessEventFn>(address)(reinterpret_cast<void*>(object), fn, data);
         return true;
     }
 
@@ -222,6 +234,45 @@ namespace
             find(get_rotation_fn, xor_text(L"/Script/Engine.Controller:GetControlRotation"));
             find(set_rotation_fn, xor_text(L"/Script/Engine.Controller:SetControlRotation"));
         }
+    }
+
+    void change_name(const Rename& input)
+    {
+        const auto identity = read<FNameValue>(input.controller + offsets::UObject::NamePrivate);
+        if (read<std::uintptr_t>(offsets::base + offsets::UWorldPtr) != input.world || !live(input.world) || !live(input.controller) || identity.ComparisonIndex != input.identity.ComparisonIndex || identity.Number != input.identity.Number)
+        {
+            log(xor_text("Name: match/controller changed; request cancelled"));
+            return;
+        }
+        if (!engine::is_live_object(session_class))
+            session_class = engine::static_find_object(nullptr, nullptr, xor_text(L"/Script/WDGame.WDGameStateSession"));
+        const auto instance = read<std::uintptr_t>(input.world + offsets::World::OwningGameInstance);
+        const auto locals = live(instance) ? read<TArray<std::uintptr_t>>(instance + offsets::UGameInstance::LocalPlayers) : TArray<std::uintptr_t>{};
+        std::uintptr_t local = 0;
+        if (!extras::derives(read<std::uintptr_t>(input.world + offsets::World::GameState), session_class) || !locals.TryGet(0, local, 8) || !live(local) || read<std::uintptr_t>(local + offsets::UPlayer::PlayerController) != input.controller)
+        {
+            log(xor_text("Name: no matching local controller in a live match"));
+            return;
+        }
+        static void *controller_class = nullptr, *rename_fn = nullptr;
+        if (!engine::is_live_object(controller_class))
+        {
+            controller_class = engine::static_find_object(nullptr, nullptr, xor_text(L"/Script/Engine.PlayerController"));
+            rename_fn = nullptr;
+        }
+        if (!engine::is_live_object(rename_fn))
+            rename_fn = nullptr;
+        function(rename_fn, controller_class, xor_text(L"/Script/Engine.PlayerController"), xor_text(L"ServerChangeName"));
+        // RPC strings include the terminator. FString's lookup-only constructor does not.
+        struct
+        {
+            TArray<wchar_t> name;
+            unsigned char pad[0x30]{};
+        } params{};
+        params.name.Data = const_cast<wchar_t*>(input.name);
+        params.name.Count = params.name.Max = static_cast<int>(wcslen(input.name)) + 1;
+        const bool sent = rpc_call(input.controller, rename_fn, &params);
+        log(sent ? xor_text("Name: rename request sent for '%ls' (server confirmation pending)") : xor_text("Name: ServerChangeName unavailable; request not sent for '%ls'"), input.name);
     }
 
     struct Sparse
@@ -523,7 +574,7 @@ namespace
                         int key;
                         unsigned char pad[52];
                     } params{manticore, ++join_key};
-                    commit_next = faction_call(ps, reserve_fn, &params);
+                    commit_next = rpc_call(ps, reserve_fn, &params);
                     if (commit_next && !(join_logged & 1))
                     {
                         join_logged |= 1;
@@ -538,7 +589,7 @@ namespace
                         int key;
                         unsigned char pad[60];
                     } params{join_key};
-                    const bool sent = faction_call(ps, commit_fn, &params);
+                    const bool sent = rpc_call(ps, commit_fn, &params);
                     if (sent && !(join_logged & 2))
                     {
                         join_logged |= 2;
@@ -596,9 +647,15 @@ namespace
     {
         static bool inside = false, nested_wake = false;
         Request input;
+        Rename rename;
         bool run = false, notify_join = false;
         AcquireSRWLockExclusive(&mailbox);
         const auto previous = previous_proc;
+        if (message == wake_message && !inside)
+        {
+            rename = name_request;
+            name_request = {};
+        }
         if (message == wake_message && !inside && pending)
         {
             run = true;
@@ -621,13 +678,16 @@ namespace
             nested_wake = true;
             return 0;
         }
-        if (run)
+        if (run || rename.name[0])
         {
             inside = true;
+            if (rename.name[0])
+                change_name(rename);
             if (notify_join)
                 log(xor_text("Auto faction: game window callback received"));
-            service(input);
-            if (input.cleanup && reinterpret_cast<WNDPROC>(GetWindowLongPtrW(window, GWLP_WNDPROC)) == on_message)
+            if (run)
+                service(input);
+            if (run && input.cleanup && reinterpret_cast<WNDPROC>(GetWindowLongPtrW(window, GWLP_WNDPROC)) == on_message)
                 SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(previous));
             inside = false;
         }
@@ -650,6 +710,23 @@ namespace
             return FALSE;
         }
         return TRUE;
+    }
+
+    void install_callback()
+    {
+        if (installed || stopped || frame_ticks < next_install)
+            return;
+        next_install = frame_ticks + 5000;
+        message_window = nullptr;
+        EnumWindows(find_window, reinterpret_cast<LPARAM>(&message_window));
+        if (message_window)
+        {
+            AcquireSRWLockExclusive(&mailbox);
+            previous_proc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(message_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(on_message)));
+            installed = previous_proc != nullptr;
+            ReleaseSRWLockExclusive(&mailbox);
+        }
+        log(installed ? xor_text("game actions: window callback installed") : xor_text("game actions: window callback unavailable; retrying"));
     }
 } // namespace
 
@@ -680,6 +757,14 @@ void game_actions::update(const Config& settings, bool menu_visible)
 {
     if (stopped)
         return;
+#ifdef WD_TEST
+    const bool down = test_name_key_down == settings.name_change_key;
+#else
+    const bool down = (GetAsyncKeyState(settings.name_change_key) & 0x8000) != 0;
+#endif
+    name_pressed = down && !name_down && name_key == settings.name_change_key && !menu_visible && settings.aimbot.enabled && settings.aimbot.key != settings.name_change_key;
+    name_down = down;
+    name_key = settings.name_change_key;
     if (settings.extra.build_x != was_build)
     {
         was_build = settings.extra.build_x;
@@ -699,18 +784,7 @@ void game_actions::update(const Config& settings, bool menu_visible)
     const bool enabled = settings.extra.build_x || settings.extra.auto_join || settings.extra.anti_afk;
     if (!installed && enabled && frame_ticks >= next_install)
     {
-        next_install = frame_ticks + 5000;
-        message_window = nullptr;
-        EnumWindows(find_window, reinterpret_cast<LPARAM>(&message_window));
-        if (message_window)
-        {
-            // Publish the previous procedure before any callback can use it.
-            AcquireSRWLockExclusive(&mailbox);
-            previous_proc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(message_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(on_message)));
-            installed = previous_proc != nullptr;
-            ReleaseSRWLockExclusive(&mailbox);
-        }
-        log(installed ? xor_text("game actions: window callback installed") : xor_text("game actions: window callback unavailable; retrying"));
+        install_callback();
         if (settings.extra.build_x || settings.extra.auto_join)
         {
             const char* delivery = installed ? xor_text("waiting for callback") : message_window ? xor_text("callback install failed")
@@ -768,12 +842,85 @@ void game_actions::update(const Config& settings, bool menu_visible)
         post_failed = false;
 }
 
+void game_actions::copy_target_name(const game::Snapshot& snapshot)
+{
+    if (!name_pressed || stopped)
+        return;
+    name_pressed = false;
+    if (!snapshot.valid || !snapshot.aim_selected_actor)
+        return;
+    const game::ProjectedPlayer* target = nullptr;
+    for (const auto& player : snapshot.players)
+        if (player.actor_addr == snapshot.aim_selected_actor && !player.is_vehicle)
+        {
+            target = &player;
+            break;
+        }
+    if (!target || !live(target->actor_addr))
+        return;
+    const auto ps = read<std::uintptr_t>(target->actor_addr + offsets::APawn::PlayerState);
+    if (!live(ps) || read<std::uintptr_t>(ps + offsets::APlayerState::PawnPrivate) != target->actor_addr)
+        return;
+    const auto raw = read<FString>(ps + offsets::APlayerState::PlayerNamePrivate).ToWString(64);
+    std::size_t first = 0, last = raw.size();
+    while (first < last && (raw[first] == L' ' || raw[first] == L'\t'))
+        ++first;
+    while (last > first && (raw[last - 1] == L' ' || raw[last - 1] == L'\t'))
+        --last;
+    if (first == last)
+    {
+        log(xor_text("Name: selected player has no usable name"));
+        return;
+    }
+    for (std::size_t i = first; i < last; ++i)
+        if (raw[i] < 0x20 || raw[i] == 0x7F)
+        {
+            log(xor_text("Name: control characters rejected"));
+            return;
+        }
+    Rename rename;
+    rename.world = snapshot.world;
+    rename.controller = snapshot.controller;
+    rename.identity = read<FNameValue>(snapshot.controller + offsets::UObject::NamePrivate);
+    if (!live(snapshot.controller) || !rename.identity.ComparisonIndex)
+        return;
+    auto count = (std::min)(last - first, std::size_t(32));
+    if (raw[first + count - 1] >= 0xD800 && raw[first + count - 1] <= 0xDBFF)
+        --count;
+    if (!count)
+        return;
+    memcpy(rename.name, raw.data() + first, count * sizeof(wchar_t));
+    install_callback();
+    if (!installed)
+    {
+        log(xor_text("Name: game callback unavailable; press the name-change key again"));
+        return;
+    }
+    AcquireSRWLockExclusive(&mailbox);
+    const bool busy = name_request.name[0] != 0;
+    if (!busy)
+        name_request = rename;
+    ReleaseSRWLockExclusive(&mailbox);
+    if (busy)
+        log(xor_text("Name: previous request still queued"));
+    else if (!PostMessageW(message_window, wake_message, 0, 0))
+    {
+        AcquireSRWLockExclusive(&mailbox);
+        name_request = {};
+        ReleaseSRWLockExclusive(&mailbox);
+        log(xor_text("Name: wake post failed"));
+    }
+    else
+        log(xor_text("Name: queued '%ls'"), rename.name);
+}
+
 void game_actions::stop()
 {
     stopped = true;
     if (!installed)
         return;
     AcquireSRWLockExclusive(&mailbox);
+    name_request = {};
     request = {};
     request.cleanup = true;
     installed = false;
@@ -785,6 +932,11 @@ void game_actions::stop()
 }
 
 #ifdef WD_TEST
+void game_actions::test_name_key(int key)
+{
+    test_name_key_down = key;
+}
+
 void game_actions::test_service(const Config& settings, ULONGLONG now)
 {
     service({settings.extra.build_x, settings.extra.auto_join, settings.extra.anti_afk, false, false, now});
