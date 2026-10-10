@@ -167,16 +167,22 @@ int main(int argc, char** argv)
     invalid.aimbot.bone = 400;
     invalid.esp.minimap_size = -100;
     invalid.magic_min_distance = std::numeric_limits<float>::quiet_NaN();
+    invalid.render_distance = std::numeric_limits<float>::quiet_NaN();
     *reinterpret_cast<unsigned char*>(&invalid.esp.enabled) = 0x7F;
     validate_config(invalid);
     check(invalid.aimbot.fov == 80 && invalid.aimbot.bone == 4 && invalid.esp.minimap_size == 120 && invalid.esp.enabled, "settings validation");
     check(invalid.magic_min_distance == 0 && Config{}.magic_min_distance == 0, "invalid and default Magic minimum preserve prior behavior");
+    check(invalid.render_distance == 5000, "invalid global render distance restores the nonrestricting default");
+    invalid.render_distance = 9000;
     invalid.magic_min_distance = 5000;
     validate_config(invalid);
     check(invalid.magic_min_distance == 1000, "Magic minimum clamps to the slider maximum");
+    check(invalid.render_distance == 5000, "global render distance clamps to its maximum");
+    invalid.render_distance = -1;
     invalid.magic_min_distance = -100;
     validate_config(invalid);
     check(invalid.magic_min_distance == 0, "Magic minimum cannot be negative");
+    check(invalid.render_distance == 1, "global render distance clamps to its minimum");
     config.aimbot.fov = 135;
     config.esp.visible_color[1] = 0.25f;
     config.colors.radar_grid[2] = 0.35f;
@@ -185,12 +191,14 @@ int main(int argc, char** argv)
     config.selected_visible_color[0] = 0.4f;
     config.magic_ignore_visibility = false;
     config.magic_min_distance = 125;
+    config.render_distance = 850;
     check(save_config(), "save isolated test settings");
     config = {};
     check(load_config() && config.aimbot.fov == 135 && config.esp.visible_color[1] == 0.25f && config.colors.radar_grid[2] == 0.35f && config.esp.minimap_x == 320 && config.esp.minimap_y == 140, "settings, palette and radar position round trip");
     check(config.selected_visible_color[0] == 0.4f, "visible target color survives save and load");
     check(!config.magic_ignore_visibility, "disabled Magic visibility bypass survives save and load");
     check(config.magic_min_distance == 125, "Magic minimum distance survives save and load");
+    check(config.render_distance == 850, "global render distance survives save and load");
     unsigned char legacy[188]{};
     const DWORD version = 1;
     memcpy(legacy, &version, sizeof(version));
@@ -239,7 +247,12 @@ int main(int argc, char** argv)
     RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, v6, sizeof(v6));
     config.magic_min_distance = 250;
     check(load_config() && config.magic_min_distance == 0 && !config.magic_ignore_visibility && config.selected_visible_color[0] == 0.25f && config.radar.items, "version 6 settings preserve existing choices and add zero Magic minimum");
-    check(save_config(), "save version 7 settings");
+    unsigned char v7[4 + offsetof(Config, render_distance)]{7};
+    memcpy(v7 + 4, &config, offsetof(Config, render_distance));
+    RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\WDRewriteTests", "Settings", REG_BINARY, v7, sizeof(v7));
+    config.render_distance = 100;
+    check(load_config() && config.render_distance == 5000 && config.radar.items && !config.magic_ignore_visibility, "version 7 settings retain existing choices and default the global cap");
+    check(save_config(), "save version 8 settings");
     config.radar.items = false;
     config.radar.helicopters = true;
     check(load_config() && config.radar.items && !config.radar.helicopters, "radar filters survive save and load");
@@ -319,6 +332,23 @@ int main(int argc, char** argv)
     }
 
     failures += test_effect_drawing();
+    const Config before_adjustment = config;
+    menu_open = false;
+    menu::test_adjust_keys(10000, {VK_OEM_MINUS, VK_OEM_6, VK_UP});
+    check(begin_frame(), "begin adjustment indicator frame with menu closed");
+    menu::draw();
+    check(overlay::end() && overlay::capture(L"build/adjustment-hud.bmp") && !pixel(L"build/adjustment-hud.bmp", 300, 520, 0, 0, 0, 0), "distance and FOV values render while the menu is closed");
+    menu::test_adjust_keys(10001, {});
+    menu::test_input(1, 0, 0, false);
+    check(begin_frame(), "begin adjustment indicator frame with menu open");
+    menu::draw();
+    check(overlay::end() && overlay::capture(L"build/adjustment-menu.bmp") && !pixel(L"build/adjustment-menu.bmp", 300, 520, 0, 0, 0, 0), "adjustment indicator remains visible with the menu open");
+    menu::test_adjust_keys(11001, {});
+    menu_open = false;
+    check(begin_frame(), "begin expired adjustment indicator frame");
+    menu::draw();
+    check(overlay::end() && overlay::capture(L"build/adjustment-expired.bmp") && pixel(L"build/adjustment-expired.bmp", 300, 520, 0, 0, 0, 0), "expired adjustment indicator leaves no pixels behind");
+    config = before_adjustment;
     for (int tab = 0; tab < 8; ++tab)
     {
         menu::test_input(tab, 0, 0, false);
@@ -473,6 +503,63 @@ int main(int argc, char** argv)
     visuals::draw(scene);
     overlay::end();
     check(overlay::capture(L"build/scene.bmp"), "feature drawing with sample data");
+    const Config before_range = config;
+    config.esp.minimap = config.aimbot.draw_fov = config.anti_sam.flare_warning = false;
+    for (int category = 0; category < 5; ++category)
+    {
+        game::Snapshot ranged;
+        ranged.valid = true;
+        ranged.camera.fov = 90;
+        float* limit = nullptr;
+        int px = 100, py = 111;
+        if (category == 0)
+        {
+            ranged.players.push_back(p);
+            ranged.players[0].player.distance = 100;
+            limit = &config.esp.player_distance;
+            px = 400;
+            py = 300;
+        }
+        else if (category < 3)
+        {
+            auto item = vehicle;
+            item.actor.distance_meters = 100;
+            item.screen = {100, 100, true};
+            if (category == 1)
+                ranged.vehicles.push_back(item);
+            else
+                ranged.dropped_items.push_back(item);
+            limit = category == 1 ? &config.esp.vehicle_distance : &config.esp.loot_distance;
+        }
+        else
+        {
+            game::Snapshot::Marker marker;
+            marker.bag = category == 4;
+            marker.world = {10000, 0, 0};
+            marker.distance = 100;
+            strcpy_s(marker.label, "RANGE TEST");
+            ranged.markers.push_back(marker);
+            limit = marker.bag ? &config.extra.bag_range : &config.extra.explosive_range;
+            px = 450;
+            py = 314;
+        }
+        *limit = 200;
+        const auto range_frame = [&]()
+        {
+            if (!begin_frame())
+                return false;
+            visuals::draw(ranged);
+            return overlay::end() && overlay::capture(L"build/render-distance.bmp");
+        };
+        config.render_distance = 100;
+        check(range_frame() && !pixel(L"build/render-distance.bmp", px, py, 0, 0, 0, 0), "world ESP includes the global distance boundary");
+        config.render_distance = 99;
+        check(range_frame() && pixel(L"build/render-distance.bmp", px, py, 0, 0, 0, 0), "global render cap hides world ESP beyond its boundary");
+        config.render_distance = 5000;
+        *limit = 99;
+        check(range_frame() && pixel(L"build/render-distance.bmp", px, py, 0, 0, 0, 0), "each category retains its own smaller render limit");
+    }
+    config = before_range;
     check(pixel(L"build/scene.bmp", 500, 24, 0, 0, 0, 0) && pixel(L"build/scene.bmp", 688, 212, 255, 255, 255, 255), "round radar has transparent corners and a top right center");
     for (int mode : {0, 2, 3, 4})
     {
@@ -525,6 +612,7 @@ int main(int argc, char** argv)
 
     const Config before_filters = config;
     config = {};
+    config.render_distance = 1; // Radar remains independent of the world ESP cap.
     config.esp.enabled = config.esp.vehicles = config.esp.loot = false;
     config.extra.explosives = config.extra.death_bags = false;
     config.aimbot.draw_fov = config.anti_sam.flare_warning = false;

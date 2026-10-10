@@ -1,25 +1,23 @@
-Auto faction selection: SPOT delivery and request alignment
+Held adjustment keys and on-screen values
 
-The initial log only established that the updater received the toggle. The later live screenshot explicitly showed callback received and request sent, so callback delivery alone does not explain the reported failure. No live server acceptance or performance result is claimed by these changes.
+Top-row minus/equal (VK_OEM_MINUS/VK_OEM_PLUS) decrease/increase the shared world ESP render-distance cap by 50 meters, within 1-5000. Numpad Add/Subtract do not affect these controls. Brackets (VK_OEM_4/VK_OEM_6) adjust skeleton range by 25 meters, within 1-500. Up/Down adjust aim-circle FOV by 5 pixels, within 1-800; they do not change camera FOV. Each pair responds immediately, repeats after 300 ms, then repeats at 75 ms intervals while held. Both directions together cancel. Catch-up after a long frame stall is bounded to four steps. Aim-key capture reserves the controls and blocks a held captured key until release.
 
-The optional-action transport now follows SPOT's window-procedure/private WM_APP+0x5A7 path. The existing mailbox remains, with ordinary messages forwarded unchanged, native work on the window owner thread, reentry protection and deferred nested wakes. Shutdown restores Build X markers and the original procedure if ours is still at the head of the chain. A newer subclass is preserved. The DLL is pinned, so late callbacks stay valid. No new production thread, frame cap, focus check, recurring window discovery or clock query was added.
+A plain bottom-center panel shows the values currently being adjusted. It uses the existing Windows Tahoma renderer and menu colors, has no animations, and remains visible for one second after release. It renders with the menu open or closed and with no valid game snapshot. GetTickCount64 was already imported; it is sampled only while an adjustment key or its temporary indicator is active. No new imports, threads, locks, sleeps, frame caps, focus checks or overlay polling were added. Settings remain owned by the render thread and pass to the updater through the existing settings snapshot. Hotkey changes are saved only through the existing explicit Save action.
 
-Further comparison found that SPOT copies the requested FName from live WDFaction data and calls the player state's virtual ProcessEvent (slot 0x4C). The rewrite had manufactured the tag via Conv_StringToName and used a fixed native ProcessEvent address. Auto faction now follows the live-data and virtual-dispatch path. WDFaction::FactionData is at 0x2C8 and its tag is at 0x30, matching the reference release. Manticore-named assets take priority; the current .Charlie tag is the fallback. Both FName fields are preserved, and the tag is cached per world. The engine GetObjectsOfClass function is resolved once at startup using SPOT's signature/RVA. Discovery examines a bounded class list (maximum 64 actors), releases its engine allocation, and retries at most every two seconds until found. It does not scan the complete object pool or run on the render thread.
+Global render distance is implemented as a shared drawing cap for player, vehicle, dropped-item, explosive and bag overlays, with each category's existing smaller distance still applying. The cap does not alter targeting, mini radar, trajectory effects or entity collection. Its default 5000 meters preserves existing category limits. World > Global Distance exposes the same value. Version 8 appends this one float to settings; registry versions 1-7 and shared-string versions 3-7 migrate with the default cap, retaining prior settings. New shared strings use XENGINE8. Existing skeleton and FOV settings use their existing fields. The obsolete mortar-comment claim that brackets adjusted calibration was removed; the mortar solver code is unchanged.
 
-Reserve and commit still alternate at least 500 ms apart with the same prediction key, seeded once from the existing clock as in SPOT. The controller's player state is used even when no pawn exists and while the menu is open. Existing live/session/player-state/function guards remain. An unavailable virtual slot prevents dispatch. All other features retain their existing ProcessEvent path. The menu now distinguishes reserve sent/awaiting commit, commit sent/waiting for faction, and replicated Manticore. Local dispatch is not treated as server acceptance. The live tag, callback receipt, first reserve and first commit are logged; retries do not log every request. New strings use xor_text and all logs retain WD_xetal:.
+Validation: 387 checks passed after a clean Desktop Release build. Regression coverage includes immediate and held adjustments, timing independent of polling frequency, long-stall catch-up, direction changes, opposing keys, numpad exclusion, clamping, simultaneous adjustments, key capture, indicator expiry, registry/shared-settings migration, and global/category range boundaries for all five world ESP categories. Existing radar filter rendering tests also run with a one-meter global cap to verify independence. Disposable-window screenshots verify the indicator with the menu closed/open and no residual pixels after expiry; the final bottom-center indicator and World menu captures were visually inspected. All tests use synthetic fixtures; no live injection or FPS measurement was performed.
 
-Validation: clean Desktop Release rebuild and 348 checks passed. Tests cover worker publication to a real disposable UnrealWindow, application-message filtering, forwarding and return values, correct window-thread dispatch, no-pawn faction requests, reserve/commit keys and intervals, replicated faction stopping retries, nested ProcessEvent message pumping, delayed delivery recovery, cleanup/procedure restoration, and no reinstall after stop. New RPC regressions distinguish the virtual entry point from the fixed function, use a live tag different from the mocked text-conversion result, verify cached discovery/freeing, reset on world change, two-second missing-data retries, asset priority with both FName fields, and invalid virtual slots. All game objects and faction lists in these tests are synthetic. No injection or live match test was performed.
+The string audit found 654 wrapped application runtime literals, zero unwrapped literals, and no complete plaintext source strings outside import metadata among 560 distinct checked strings of at least four characters. All new runtime text uses xor_text. Existing Desktop output/compiler settings and the user's xor.h were preserved. No commit or push was performed.
 
-The previous WM_NULL/WM_NULL PeekMessage test was an unfiltered zero/zero lookup; the revised callback tests use explicit nonzero message filters. Initial sandbox-only settings failures were resolved by running the isolated test registry suite with permission. A clean release build was used for final size verification because incremental link outputs varied in size. The Desktop project settings and user xor.h were preserved. Runtime imports remain 118; three message-hook APIs are replaced by GetWindowLongPtrW, SetWindowLongPtrW and CallWindowProcW. The engine class query is an internal engine function, not a Windows import. Source audit: 647 wrapped runtime literals and zero unwrapped literals. Binary audit: 553 distinct source strings of at least four characters absent outside import-name metadata.
-
-Final Desktop DLL: 360960 bytes (352.5 KiB).
-Imports: 118. Regression suite: 348 checks passed, 0 failures.
-SHA256: f5de838ff3125bbdc7bfe8a4da832fe6c04b1093f130beb5bcddd2fa37fabf85
+Final Desktop DLL: 368640 bytes (360.0 KiB), 7680 bytes above the preceding clean release.
+Imports: 118. Regression suite: 387 checks passed, 0 failures.
+SHA256: 39d745c25831fac0220723716e3a7f14f480b18884574345fe390b2b998e0933
 
 DLL: C:\xampp\htdocs\downloads\dll.dll
-Wrapped runtime literal occurrences: 647
+Wrapped runtime literal occurrences: 654
 Compile-only sizeof/static_assert literals: 2
-Unique source strings checked in binary (4+ characters, null-terminated): 553
+Unique source strings checked in binary (4+ characters, null-terminated): 560
 Unwrapped runtime literals: 0
 Plaintext source strings found: 0
 Import-name substring matches (loader metadata):
@@ -42,7 +40,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 2925
+Concurrent snapshot reads: 2902
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -89,21 +87,34 @@ PASS: Backspace advances once per press and wraps all four text modes
 PASS: Backspace advances once per press and wraps all four text modes
 PASS: Backspace advances once per press and wraps all four text modes
 PASS: Backspace advances once per press and wraps all four text modes
-PASS: Up increases aim FOV once per press
-PASS: Down decreases aim FOV
+PASS: FOV changes immediately with visible feedback, independent of polling speed
+PASS: held FOV waits 300 ms before repeating
+PASS: held FOV repeats every 75 ms and accounts for missed polling intervals
+PASS: a long frame stall cannot cause an unbounded adjustment jump
+PASS: changing direction adjusts immediately
 PASS: FOV hotkey respects upper limit
 PASS: FOV hotkey respects lower limit
 PASS: opposite FOV hotkeys together do not change the setting
+PASS: adjustment feedback remains briefly after release
+PASS: adjustment feedback expires without a fade or animation
+PASS: top-row minus and closing bracket independently adjust global and skeleton distance
+PASS: both distance controls support held-key repeats
+PASS: opposite distance keys cancel and numpad plus/minus are ignored
+PASS: distance hotkeys clamp their lower bounds
+PASS: distance hotkeys clamp their upper bounds
+PASS: aim-key capture blocks adjustment until the captured keys are released
+PASS: adjustments resume after releasing a key used during capture
 PASS: requested feature defaults
 PASS: shared settings round trip with new feature fields
 PASS: shared settings preserve radar filters and 400 pixel size
 PASS: shared settings preserve the visible target color
 PASS: shared settings preserve a disabled Magic visibility bypass
-PASS: version 7 sharing preserves Magic minimum distance
+PASS: version 8 sharing preserves global distance and existing settings
 PASS: version 3 shared settings migrate radar options and retired feet labels
 PASS: version 4 shared settings keep custom colors and radar and add cyan visible targets
 PASS: version 5 shared settings enable Magic visibility bypass and preserve prior settings
 PASS: version 6 sharing defaults Magic minimum to zero and preserves prior choices
+PASS: version 7 shared settings preserve prior choices with a nonrestricting global cap
 PASS: radar vehicle types can be selected independently
 PASS: automatic radar collection covers its supported range
 PASS: manual radar collection respects selected range
@@ -212,13 +223,17 @@ PASS: reject invalid pointer recorded in crash dump
 PASS: memory checks do not depend on local exception handlers
 PASS: settings validation
 PASS: invalid and default Magic minimum preserve prior behavior
+PASS: invalid global render distance restores the nonrestricting default
 PASS: Magic minimum clamps to the slider maximum
+PASS: global render distance clamps to its maximum
 PASS: Magic minimum cannot be negative
+PASS: global render distance clamps to its minimum
 PASS: save isolated test settings
 PASS: settings, palette and radar position round trip
 PASS: visible target color survives save and load
 PASS: disabled Magic visibility bypass survives save and load
 PASS: Magic minimum distance survives save and load
+PASS: global render distance survives save and load
 PASS: version 1 migration keeps custom settings and upgrades unchanged colors
 PASS: truncated version 2 settings are rejected
 PASS: version 2 migration supplies new defaults without overwriting old settings
@@ -226,7 +241,8 @@ PASS: version 3 migration doubles the old default radar and preserves feature se
 PASS: version 4 keeps custom hidden target color and defaults visible targets to cyan
 PASS: version 5 settings default Magic visibility bypass on and retain colors and radar
 PASS: version 6 settings preserve existing choices and add zero Magic minimum
-PASS: save version 7 settings
+PASS: version 7 settings retain existing choices and default the global cap
+PASS: save version 8 settings
 PASS: radar filters survive save and load
 PASS: bad settings leave current state unchanged
 PASS: stationary trajectory
@@ -240,7 +256,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.248 ms
+Busy-GPU stage 1 submission: 0.274 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -249,7 +265,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.112 ms
+Busy-GPU stage 2 submission: 0.157 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -258,7 +274,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.143 ms
+Busy-GPU stage 3 submission: 0.152 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -270,6 +286,12 @@ PASS: effect style 1 renders with markers and HUD
 PASS: effect style 2 renders with markers and HUD
 PASS: effect style 3 renders with markers and HUD
 PASS: effect style 4 renders with markers and HUD
+PASS: begin adjustment indicator frame with menu closed
+PASS: distance and FOV values render while the menu is closed
+PASS: begin adjustment indicator frame with menu open
+PASS: adjustment indicator remains visible with the menu open
+PASS: begin expired adjustment indicator frame
+PASS: expired adjustment indicator leaves no pixels behind
 PASS: begin menu frame
 PASS: present menu frame
 PASS: capture menu tab
@@ -327,6 +349,21 @@ PASS: reset radar restores automatic top right position
 PASS: color channel slider changes player color
 PASS: begin scene frame
 PASS: feature drawing with sample data
+PASS: world ESP includes the global distance boundary
+PASS: global render cap hides world ESP beyond its boundary
+PASS: each category retains its own smaller render limit
+PASS: world ESP includes the global distance boundary
+PASS: global render cap hides world ESP beyond its boundary
+PASS: each category retains its own smaller render limit
+PASS: world ESP includes the global distance boundary
+PASS: global render cap hides world ESP beyond its boundary
+PASS: each category retains its own smaller render limit
+PASS: world ESP includes the global distance boundary
+PASS: global render cap hides world ESP beyond its boundary
+PASS: each category retains its own smaller render limit
+PASS: world ESP includes the global distance boundary
+PASS: global render cap hides world ESP beyond its boundary
+PASS: each category retains its own smaller render limit
 PASS: round radar has transparent corners and a top right center
 PASS: begin player label mode
 PASS: capture player label mode
@@ -372,7 +409,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.310 ms CPU average, 5.909 ms max; 9.660 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.320 ms CPU average, 4.905 ms max; 9.789 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -386,4 +423,4 @@ PASS: external presentation preserves pixels and alpha
 
 FullName                          Length
 --------                          ------
-C:\xampp\htdocs\downloads\dll.dll 360960
+C:\xampp\htdocs\downloads\dll.dll 368640

@@ -14,11 +14,92 @@ namespace
     float drag_x, drag_y;
     int tab;
     bool clicked, held, dragging, stop, binding;
-    bool old_insert, old_end, old_mouse, old_backspace, old_up, old_down;
+    bool old_insert, old_end, old_mouse, old_backspace;
     bool binding_keys[256]{};
     float* active_slider;
     const char* tooltip;
-    const char* status = xor_text("Insert: menu    Backspace: labels    Up/Down: FOV    End: stop");
+    const char* status = xor_text("Ins: menu   Backspace: labels   -/=: range   [/]: bones   Up/Down: FOV   End: stop");
+    struct Adjustment
+    {
+        int decrease, increase;
+        float* value;
+        float step, maximum;
+        const char* format;
+        int direction = 0;
+        ULONGLONG repeat_at = 0, visible_until = 0;
+        bool blocked = false;
+    } adjustments[]{
+        {VK_OEM_MINUS, VK_OEM_PLUS, &config.render_distance, 50, 5000, xor_text("Render distance: %.0f m   [- / =]")},
+        {VK_OEM_4, VK_OEM_6, &config.esp.skeleton_distance, 25, 500, xor_text("Skeleton distance: %.0f m   [ / ]")},
+        {VK_DOWN, VK_UP, &config.aimbot.fov, 5, 800, xor_text("Aim FOV: %.0f px   [Up / Down]")}};
+
+    bool adjustment_key(int key)
+    {
+        for (const auto& a : adjustments)
+            if (key == a.decrease || key == a.increase)
+                return true;
+        return false;
+    }
+
+    void update_adjustments(unsigned keys, ULONGLONG now)
+    {
+        for (int i = 0; i < 3; ++i)
+        {
+            auto& a = adjustments[i];
+            const bool decrease = (keys & (1u << (i * 2))) != 0;
+            const bool increase = (keys & (2u << (i * 2))) != 0;
+            const int direction = decrease == increase ? 0 : increase ? 1
+                                                                      : -1;
+            if (now >= a.visible_until)
+                a.visible_until = 0;
+            if (binding || a.blocked)
+            {
+                a.blocked = decrease || increase;
+                a.direction = 0;
+                a.visible_until = 0;
+                continue;
+            }
+            if (direction)
+            {
+                a.visible_until = now + 1000;
+                if (direction != a.direction)
+                {
+                    *a.value = std::clamp(*a.value + direction * a.step, 1.f, a.maximum);
+                    a.repeat_at = now + 300;
+                }
+                else if (now >= a.repeat_at)
+                {
+                    const auto steps = std::min<ULONGLONG>(1 + (now - a.repeat_at) / 75, 4);
+                    *a.value = std::clamp(*a.value + direction * a.step * static_cast<float>(steps), 1.f, a.maximum);
+                    a.repeat_at = now + 75;
+                }
+            }
+            a.direction = direction;
+        }
+    }
+
+    void draw_adjustments()
+    {
+        int rows = 0;
+        for (const auto& a : adjustments)
+            rows += a.visible_until != 0;
+        if (!rows)
+            return;
+        const float left = std::max(4.f, (screen_width - 310.f) * 0.5f);
+        const float panel_height = 12.f + rows * 23.f;
+        const float panel_top = std::max(4.f, screen_height - panel_height - 24.f);
+        rect(left, panel_top, 310, panel_height, color(config.colors.menu_fill));
+        rect(left, panel_top, 2, panel_height, color(config.colors.menu_accent));
+        float top = panel_top + 6;
+        for (const auto& a : adjustments)
+            if (a.visible_until)
+            {
+                char label[80];
+                snprintf(label, sizeof(label), a.format, *a.value);
+                text(left + 12, top, label, color(config.colors.menu_value), 14);
+                top += 23;
+            }
+    }
 
     void set_player_text(int mode)
     {
@@ -35,19 +116,6 @@ namespace
             set_player_text(next == 1 ? 2 : next);
         }
         old_backspace = down;
-    }
-
-    void update_fov(bool up, bool down)
-    {
-        if (!binding && !(up && down))
-        {
-            if (up && !old_up)
-                config.aimbot.fov = std::min(config.aimbot.fov + 5.f, 800.f);
-            if (down && !old_down)
-                config.aimbot.fov = std::max(config.aimbot.fov - 5.f, 1.f);
-        }
-        old_up = up;
-        old_down = down;
     }
 
     bool inside(float a, float b, float w, float h)
@@ -193,7 +261,19 @@ void menu::update()
     old_insert = insert;
     old_end = end;
     update_backspace((GetAsyncKeyState(VK_BACK) & 0x8000) != 0);
-    update_fov((GetAsyncKeyState(VK_UP) & 0x8000) != 0, (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0);
+    unsigned adjustment_keys = 0;
+    bool adjusting = false;
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto& a = adjustments[i];
+        if (GetAsyncKeyState(a.decrease) & 0x8000)
+            adjustment_keys |= 1u << (i * 2);
+        if (GetAsyncKeyState(a.increase) & 0x8000)
+            adjustment_keys |= 2u << (i * 2);
+        adjusting |= a.visible_until != 0 || a.blocked;
+    }
+    if (adjustment_keys || adjusting)
+        update_adjustments(adjustment_keys, GetTickCount64());
     POINT cursor{};
     const bool cursor_valid = !menu_open || GetCursorPos(&cursor);
     if (menu_open && cursor_valid)
@@ -219,7 +299,7 @@ void menu::update()
             const bool down = (GetAsyncKeyState(key) & 0x8000) != 0;
             if (down && !binding_keys[key])
             {
-                if (key != VK_ESCAPE && key != VK_INSERT && key != VK_END && key != VK_BACK && key != VK_UP && key != VK_DOWN)
+                if (key != VK_ESCAPE && key != VK_INSERT && key != VK_END && key != VK_BACK && !adjustment_key(key))
                     config.aimbot.key = key;
                 binding = false;
                 clicked = false;
@@ -253,7 +333,10 @@ void menu::draw()
 {
     tooltip = nullptr;
     if (!menu_open)
+    {
+        draw_adjustments();
         return;
+    }
     if (!held)
         active_slider = nullptr;
     Color border = color(config.colors.menu_accent);
@@ -293,7 +376,7 @@ void menu::draw()
         toggle(0, 3, xor_text("Team check"), a.team_check, xor_text("Excludes teammates from aim target selection."));
         choice(0, 4, xor_text("Target bone"), a.bone, bones, 5, xor_text("Chooses the body part to aim at. Nearest selects\nthe valid bone closest to the crosshair."));
         choice(0, 5, xor_text("Target priority"), a.mode, modes, 3, xor_text("Prefers the closest target, nearest to the crosshair,\nor lowest health. Click to cycle."));
-        number(0, 6, xor_text("FOV (Up/Down)"), a.fov, 5, 1, 800, xor_text("Sets the aim selection radius in screen pixels.\nUp / Down changes it by 5 pixels per press."));
+        number(0, 6, xor_text("FOV (Up/Down)"), a.fov, 5, 1, 800, xor_text("Sets the aim selection radius in screen pixels.\nHold Up / Down to adjust in 5-pixel steps."));
         integer(0, 7, xor_text("Aim speed"), a.smooth, 1, 50, xor_text("Controls how quickly normal aim turns toward a target.\nHigher values turn faster."));
         text(x + 18, y + 331, xor_text("Aim key"), color(config.colors.menu_text));
         {
@@ -339,7 +422,7 @@ void menu::draw()
         toggle(1, 0, xor_text("Visibility colors"), e.visible_check, xor_text("Uses different player colors for visible and\nhidden players. Edit those colors in Colors."));
         toggle(1, 1, xor_text("Show teammates"), e.team, xor_text("Includes teammates in player overlays.\nRadar teammates are controlled in Mini Radar."));
         number(1, 4, xor_text("Player range (m)"), e.player_distance, 50, 1, 2000, xor_text("Maximum distance for player overlays in the world.\nDoes not limit the mini radar."));
-        number(1, 5, xor_text("Skeleton range (m)"), e.skeleton_distance, 25, 1, 500, xor_text("Maximum distance for drawing player skeletons."));
+        number(1, 5, xor_text("Skeleton range (m)"), e.skeleton_distance, 25, 1, 500, xor_text("Maximum distance for drawing player skeletons.\nHold [ / ] to adjust in 25-meter steps."));
         {
             // Keep saved mode IDs stable while omitting the retired feet mode.
             int mode = std::max(0, config.extra.player_text - 1);
@@ -366,6 +449,9 @@ void menu::draw()
         divider(1, 3);
         text(x + 334, y + 184, xor_text("Marker colors"), color(config.colors.menu_text));
         text(x + 334, y + 206, xor_text("Edit marker colors in Colors > World.\nEach category has its own color."), muted, 12);
+        section(1, 277, xor_text("GLOBAL DISTANCE"));
+        number(1, 7, xor_text("Render range (m)"), config.render_distance, 50, 1, 5000, xor_text("Caps all world ESP; each category keeps its own limit.\nHold - / = (top row) to adjust. Radar stays separate."));
+        text(x + 334, y + 332, xor_text("The smaller of global and category range applies."), muted, 11);
         break;
     case 3:
         divider(0, 3);
@@ -546,13 +632,31 @@ void menu::draw()
         tooltip = nullptr;
     line(mouse_x - 5, mouse_y, mouse_x + 5, mouse_y, white);
     line(mouse_x, mouse_y - 5, mouse_x, mouse_y + 5, white);
+    draw_adjustments();
     clicked = false;
 }
 
 #ifdef WD_TEST
-void menu::test_fov(bool up, bool down)
+void menu::test_adjust_keys(ULONGLONG now, std::initializer_list<int> keys, bool capture)
 {
-    update_fov(up, down);
+    unsigned mask = 0;
+    for (int i = 0; i < 3; ++i)
+        for (int key : keys)
+        {
+            if (key == adjustments[i].decrease)
+                mask |= 1u << (i * 2);
+            if (key == adjustments[i].increase)
+                mask |= 2u << (i * 2);
+        }
+    const bool previous_binding = binding;
+    binding = capture;
+    update_adjustments(mask, now);
+    binding = previous_binding;
+}
+
+bool menu::test_adjustment_visible(int index)
+{
+    return index >= 0 && index < 3 && adjustments[index].visible_until != 0;
 }
 
 void menu::test_backspace(bool down)

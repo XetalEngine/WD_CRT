@@ -77,7 +77,7 @@ struct Config
         int arc_mode = 0;
         // SPH-2 field calibration: actual range / native nominal range. A value
         // below 1 means the spawned shell lands short of the HUD/native table.
-        // Tunable live with [ and ].
+        // Retained for saved settings; the current mortar solver uses automatic calibration.
         float range_scale = 0.77f;
     } mortar;
 
@@ -161,6 +161,9 @@ struct Config
 
     // Version 7: Silent handles nearer targets when both projectile modes are on.
     float magic_min_distance = 0.f;
+
+    // Version 8: shared world ESP cap; existing category limits still apply.
+    float render_distance = 5000.f;
 };
 
 namespace wdgs::actors

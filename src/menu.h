@@ -7,7 +7,8 @@ namespace menu
     void draw();
     bool stop_requested();
 #ifdef WD_TEST
-    void test_fov(bool up, bool down);
+    void test_adjust_keys(ULONGLONG now, std::initializer_list<int> keys, bool capture = false);
+    bool test_adjustment_visible(int index);
     void test_backspace(bool down);
     void test_input(int tab, float x, float y, bool click, bool down = false);
     void test_mouse(float x, float y, bool down);

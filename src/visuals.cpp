@@ -66,7 +66,7 @@ namespace
     {
         const auto& e = config.esp;
         const auto& data = p.player;
-        if (p.is_vehicle || data.distance > e.player_distance || (data.is_in_team && !e.team))
+        if (p.is_vehicle || data.distance > std::min(e.player_distance, config.render_distance) || (data.is_in_team && !e.team))
             return;
         const auto screen = projection ? projection->project(data.world_pos) : p.screen;
         if (!screen.valid || screen.x < 0 || screen.y < 0 || screen.x >= screen_width || screen.y >= screen_height)
@@ -215,7 +215,7 @@ namespace
             }
         for (const auto& marker : snapshot.markers)
         {
-            if (marker.bag ? !x.death_bags || marker.distance > x.bag_range : !x.explosives || marker.distance > x.explosive_range)
+            if (marker.distance > config.render_distance || (marker.bag ? !x.death_bags || marker.distance > x.bag_range : !x.explosives || marker.distance > x.explosive_range))
                 continue;
             const auto point = projection.project(marker.world);
             if (!point.valid || point.x < 0 || point.y < 0 || point.x > screen_width || point.y > screen_height)
@@ -431,12 +431,12 @@ void visuals::draw(const game::Snapshot& snapshot, const CameraIPC* camera)
             player(p, selected, !mortar_selection, fresh);
     if (config.esp.vehicles)
         for (const auto& v : snapshot.vehicles)
-            if (v.actor.distance_meters <= config.esp.vehicle_distance)
+            if (v.actor.distance_meters <= std::min(config.esp.vehicle_distance, config.render_distance))
                 world_actor(v, vehicle_color(v), fresh);
     if (config.esp.loot)
         for (const auto& item : snapshot.dropped_items)
         {
-            if (item.actor.distance_meters > config.esp.loot_distance)
+            if (item.actor.distance_meters > std::min(config.esp.loot_distance, config.render_distance))
                 continue;
             const bool enriched = config.extra.death_bags && std::any_of(snapshot.markers.begin(), snapshot.markers.end(), [&](const auto& marker)
                                                                          { return marker.bag && marker.distance <= config.extra.bag_range && marker.actor == item.actor.address; });

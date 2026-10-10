@@ -13,7 +13,7 @@ namespace
 #endif
     struct Stored
     {
-        DWORD version = 7;
+        DWORD version = 8;
         Config data;
     };
     static_assert(offsetof(Config, colors) == 184, "Keep the version 1 settings prefix intact");
@@ -76,6 +76,7 @@ void validate_config(Config& value)
 {
     normalize_bool(value.magic_ignore_visibility);
     limit(value.magic_min_distance, 0, 1000, 0);
+    limit(value.render_distance, 1, 5000, 5000);
     auto& e = value.esp;
     for (bool* b : {&e.enabled, &e.agent_name, &e.skeleton, &e.box, &e.lines, &e.health, &e.distance, &e.visible_check, &e.team, &e.loot, &e.vehicles, &e.minimap, &e.minimap_auto_range, &value.aimbot.enabled, &value.aimbot.draw_fov, &value.aimbot.visible_check, &value.aimbot.team_check, &value.aimbot.silent_aim, &value.aimbot.magic_bullet, &value.prediction.enabled, &value.prediction.bullet_drop, &value.prediction.velocity_lead, &value.prediction.show_line, &value.anti_sam.auto_flare, &value.anti_sam.flare_warning, &value.mortar.mortar_aim})
         normalize_bool(*b);
@@ -129,7 +130,7 @@ void validate_config(Config& value)
 bool save_config()
 {
     validate_config(config);
-    Stored stored{7, config};
+    Stored stored{8, config};
     HKEY opened;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, key, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &opened, nullptr) != ERROR_SUCCESS)
         return false;
@@ -174,7 +175,11 @@ bool load_config()
     {
         // Zero preserves Magic at every distance when upgrading older settings.
     }
-    else if (stored.version != 7 || size != sizeof(stored))
+    else if (stored.version == 7 && size == offsetof(Stored, data) + offsetof(Config, render_distance))
+    {
+        // The default cap leaves all existing category limits unchanged.
+    }
+    else if (stored.version != 8 || size != sizeof(stored))
         return false;
     if (stored.version < 4)
         migrate_radar(stored.data);
@@ -185,11 +190,11 @@ bool load_config()
 
 std::string encode_config(const Config& value)
 {
-    Stored stored{7, value};
+    Stored stored{8, value};
     validate_config(stored.data);
     const auto bytes = reinterpret_cast<const unsigned char*>(&stored);
     const char* hex = xor_text("0123456789ABCDEF");
-    std::string result = xor_text("XENGINE7:");
+    std::string result = xor_text("XENGINE8:");
     result.reserve(9 + sizeof(stored) * 2 + 8);
     std::uint32_t hash = 2166136261u;
     for (std::size_t i = 0; i < sizeof(stored); ++i)
@@ -208,7 +213,7 @@ bool decode_config(const char* text, std::size_t length, Config& value)
 {
     if (!text || length < 17)
         return false;
-    if (memcmp(text, xor_text("XENGINE"), 7) || text[8] != ':' || text[7] < '3' || text[7] > '7')
+    if (memcmp(text, xor_text("XENGINE"), 7) || text[8] != ':' || text[7] < '3' || text[7] > '8')
         return false;
     const DWORD version = text[7] - '0';
     std::size_t stored_size = sizeof(Stored);
@@ -220,6 +225,8 @@ bool decode_config(const char* text, std::size_t length, Config& value)
         stored_size = offsetof(Stored, data) + offsetof(Config, magic_ignore_visibility);
     else if (version == 6)
         stored_size = offsetof(Stored, data) + offsetof(Config, magic_min_distance);
+    else if (version == 7)
+        stored_size = offsetof(Stored, data) + offsetof(Config, render_distance);
     if (length != 9 + stored_size * 2 + 8)
         return false;
     const auto digit = [](char c)
