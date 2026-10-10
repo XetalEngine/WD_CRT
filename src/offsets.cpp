@@ -12,6 +12,7 @@ namespace offsets
     {
         std::uintptr_t ProcessEvent = 0;
         std::uintptr_t StaticFindObject = 0;
+        std::uintptr_t GetObjectsOfClass = 0;
         std::uintptr_t FreeObjectName = 0;
     } // namespace Functions
 
@@ -257,6 +258,10 @@ namespace offsets
             Functions::ProcessEvent = 0x1850CE0;
             // log(""offsets: ProcessEvent pattern failed, using hardcoded 0x%llX", Functions::ProcessEvent);
         }
+
+        // SPOT's class-list query; resolved once, used only for faction discovery.
+        const auto objects_addr = pattern_scan(base, xor_text("E8 ? ? ? ? 8B 4D ? 4C 63 6D"));
+        Functions::GetObjectsOfClass = objects_addr ? resolve_rip(objects_addr, 1, 5) - base : 0x1892020;
 
         auto freeobjectname_addr = pattern_scan(base, xor_text("48 85 C9 74 ? 53 48 83 EC ? 48 8B D9 48 8B 0D"));
         if (freeobjectname_addr)

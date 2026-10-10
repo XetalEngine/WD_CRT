@@ -9,24 +9,28 @@ namespace
     {
         bool build = false, join = false, afk = false, aiming = false, menu = false;
         ULONGLONG now = 0;
-        HHOOK cleanup = nullptr;
+        bool cleanup = false;
     } request;
     SRWLOCK mailbox = SRWLOCK_INIT;
     game_actions::Status build_report, faction_report;
     bool pending = false;
     bool was_enabled = false;
     bool was_build = false, was_join = false;
-    HHOOK hook = nullptr;
-    DWORD message_thread = 0;
+    WNDPROC previous_proc = nullptr;
+    bool installed = false, stopped = false;
     HWND message_window = nullptr;
     ULONGLONG next_publish = 0, next_install = 0;
+    ULONGLONG pending_since = 0;
+    bool delivery_warned = false, post_failed = false;
+    constexpr UINT wake_message = WM_APP + 0x5A7;
     // Only the game's message thread owns everything below.
     std::uintptr_t active_world = 0, active_pawn = 0, active_player_state = 0;
-    ULONGLONG next_resolve = 0, next_join = 0, next_afk = 0;
-    int join_key = 0x10000, afk_side = 1;
+    ULONGLONG next_resolve = 0, next_join = 0, next_afk = 0, next_faction_scan = 0;
+    int join_key = 0, afk_side = 1;
     bool commit_next = false;
+    unsigned join_logged = 0;
     FNameValue manticore{};
-    void *session_class = nullptr, *state_class = nullptr, *reserve_fn = nullptr, *commit_fn = nullptr;
+    void *session_class = nullptr, *state_class = nullptr, *faction_class = nullptr, *reserve_fn = nullptr, *commit_fn = nullptr;
     void *manager_class = nullptr, *tool_class = nullptr, *decal_class = nullptr;
     void *actor_class = nullptr, *scene_class = nullptr, *trace_class = nullptr;
     void *component_fn = nullptr, *eyes_fn = nullptr, *location_fn = nullptr, *trace_fn = nullptr;
@@ -75,6 +79,59 @@ namespace
     bool call(std::uintptr_t p, void* fn, void* data)
     {
         return engine::call_process_event(reinterpret_cast<void*>(p), fn, data);
+    }
+
+    bool faction_call(std::uintptr_t player_state, void* fn, void* data)
+    {
+        if (!live(player_state) || !engine::is_live_object(fn))
+            return false;
+        // SPOT dispatches through the object's virtual ProcessEvent slot.
+        const auto table = read<std::uintptr_t>(player_state);
+        const auto address = read<std::uintptr_t>(table + 0x4C * sizeof(std::uintptr_t));
+        if (!is_valid_ptr(reinterpret_cast<void*>(address)))
+            return false;
+        reinterpret_cast<engine::ProcessEventFn>(address)(reinterpret_cast<void*>(player_state), fn, data);
+        return true;
+    }
+
+    FNameValue faction_tag()
+    {
+        if (!engine::is_live_object(faction_class) || !offsets::Functions::GetObjectsOfClass || !offsets::Functions::FreeObjectName)
+            return {};
+        const auto query = offsets::base + offsets::Functions::GetObjectsOfClass;
+        const auto release = offsets::base + offsets::Functions::FreeObjectName;
+        if (!is_valid_ptr(reinterpret_cast<void*>(query)) || !is_valid_ptr(reinterpret_cast<void*>(release)))
+            return {};
+        using Query = void(__fastcall*)(void*, TArray<std::uintptr_t>*, unsigned, unsigned, int);
+        TArray<std::uintptr_t> list;
+        reinterpret_cast<Query>(query)(faction_class, &list, 1, 0, 0);
+        FNameValue by_asset{}, by_charlie{};
+        if (list.Count > 0 && list.Count <= 64 && list.IsSane(4096))
+            for (int i = 0; i < list.Count; ++i)
+            {
+                const auto actor = list[i];
+                if (!extras::derives(actor, faction_class))
+                    continue;
+                // Verified SPOT release offsets: WDFaction::FactionData and its tag.
+                const auto data = read<std::uintptr_t>(actor + 0x2C8);
+                if (!live(data))
+                    continue;
+                const auto tag = read<FNameValue>(data + 0x30);
+                if (!tag.ComparisonIndex)
+                    continue;
+                const auto name = FName::ToString(tag.ComparisonIndex, tag.Number);
+                if (name.size() >= 8 && strcmp(name.c_str() + name.size() - 8, xor_text(".Charlie")) == 0)
+                    by_charlie = tag;
+                auto asset = FName::ToString(read<FNameValue>(data + offsets::UObject::NamePrivate).ComparisonIndex);
+                for (char& c : asset)
+                    if (c >= 'A' && c <= 'Z')
+                        c += 'a' - 'A';
+                if (asset.find(xor_text("manticore")) != std::string::npos)
+                    by_asset = tag;
+            }
+        if (list.Data)
+            reinterpret_cast<engine::FreeObjectNameFn>(release)(reinterpret_cast<std::uintptr_t>(list.Data));
+        return by_asset.ComparisonIndex ? by_asset : by_charlie;
     }
 
     bool same(const Spot& spot)
@@ -143,22 +200,9 @@ namespace
         if (input.join)
         {
             find(state_class, xor_text(L"/Script/WDGame.WDPlayerStateSession"));
+            find(faction_class, xor_text(L"/Script/WDGame.WDFaction"));
             function(reserve_fn, state_class, xor_text(L"/Script/WDGame.WDPlayerStateSession"), xor_text(L"Server_ReserveFaction"));
             function(commit_fn, state_class, xor_text(L"/Script/WDGame.WDPlayerStateSession"), xor_text(L"Server_CommitFactionReservation"));
-            if (!manticore.ComparisonIndex)
-            {
-                auto library = engine::static_find_object(nullptr, nullptr, xor_text(L"/Script/Engine.Default__KismetStringLibrary"));
-                auto owner = engine::static_find_object(nullptr, nullptr, xor_text(L"/Script/Engine.KismetStringLibrary"));
-                void* fn = nullptr;
-                function(fn, owner, xor_text(L"/Script/Engine.KismetStringLibrary"), xor_text(L"Conv_StringToName"));
-                struct
-                {
-                    FString text;
-                    FNameValue name;
-                } params{FString(xor_text(L"Meta.Alignment.Faction.Charlie")), {}};
-                if (engine::call_process_event(library, fn, &params))
-                    manticore = params.name;
-            }
         }
         if (input.build)
         {
@@ -358,6 +402,7 @@ namespace
     {
         if (!input.join)
         {
+            join_logged = 0;
             next_join = 0;
             commit_next = false;
             active_player_state = 0;
@@ -374,6 +419,8 @@ namespace
         if (!live(world))
         {
             restore();
+            manticore = {};
+            next_faction_scan = 0;
             if (input.build)
                 build_state(xor_text("no live world"));
             if (input.join)
@@ -382,12 +429,15 @@ namespace
         }
         if (world != active_world)
         {
+            join_logged = 0;
             restore();
             active_world = world;
             active_pawn = 0;
             active_player_state = 0;
             next_join = next_afk = 0;
             commit_next = false;
+            manticore = {};
+            next_faction_scan = 0;
         }
         const auto state = read<std::uintptr_t>(world + offsets::World::GameState);
         if (!extras::derives(state, session_class))
@@ -433,6 +483,7 @@ namespace
         const auto ps = read<std::uintptr_t>(controller + offsets::APlayerController_Extra::ControllerPlayerState);
         if (input.join && ps != active_player_state)
         {
+            join_logged = 0;
             active_player_state = ps;
             commit_next = false;
             next_join = 0;
@@ -440,6 +491,13 @@ namespace
         if (input.join && input.now >= next_join)
         {
             next_join = input.now + 500;
+            if (!manticore.ComparisonIndex && input.now >= next_faction_scan)
+            {
+                next_faction_scan = input.now + 2000;
+                manticore = faction_tag();
+                if (manticore.ComparisonIndex)
+                    log(xor_text("Auto faction: live Manticore tag=%u:%u"), manticore.ComparisonIndex, manticore.Number);
+            }
             if (!reserve_fn || !commit_fn || !state_class)
                 faction_state(xor_text("faction functions unavailable"));
             else if (!manticore.ComparisonIndex)
@@ -457,14 +515,21 @@ namespace
                 }
                 else if (!commit_next)
                 {
+                    if (!join_key)
+                        join_key = 0x10000 + static_cast<int>(input.now & 0xFFFF);
                     struct
                     {
                         FNameValue tag;
                         int key;
                         unsigned char pad[52];
                     } params{manticore, ++join_key};
-                    commit_next = call(ps, reserve_fn, &params);
-                    faction_state(commit_next ? xor_text("request sent; waiting for faction") : xor_text("reserve call failed"));
+                    commit_next = faction_call(ps, reserve_fn, &params);
+                    if (commit_next && !(join_logged & 1))
+                    {
+                        join_logged |= 1;
+                        log(xor_text("Auto faction: reserve dispatched (key=%d)"), params.key);
+                    }
+                    faction_state(commit_next ? (join_logged & 2 ? xor_text("commit sent; waiting for faction") : xor_text("reserve sent; awaiting commit")) : xor_text("reserve call failed"));
                 }
                 else
                 {
@@ -473,7 +538,13 @@ namespace
                         int key;
                         unsigned char pad[60];
                     } params{join_key};
-                    faction_state(call(ps, commit_fn, &params) ? xor_text("request sent; waiting for faction") : xor_text("commit call failed"));
+                    const bool sent = faction_call(ps, commit_fn, &params);
+                    if (sent && !(join_logged & 2))
+                    {
+                        join_logged |= 2;
+                        log(xor_text("Auto faction: commit dispatched (key=%d)"), params.key);
+                    }
+                    faction_state(sent ? xor_text("commit sent; waiting for faction") : xor_text("commit call failed"));
                     commit_next = false;
                 }
             }
@@ -521,48 +592,61 @@ namespace
         }
     }
 
-    LRESULT CALLBACK on_message(int code, WPARAM wparam, LPARAM lparam)
+    LRESULT CALLBACK on_message(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
     {
-        static bool inside = false;
-        if (inside)
-            return CallNextHookEx(nullptr, code, wparam, lparam);
+        static bool inside = false, nested_wake = false;
         Request input;
-        bool run = false;
-        if (code >= 0 && wparam == PM_REMOVE && TryAcquireSRWLockExclusive(&mailbox))
+        bool run = false, notify_join = false;
+        AcquireSRWLockExclusive(&mailbox);
+        const auto previous = previous_proc;
+        if (message == wake_message && !inside && pending)
         {
-            run = pending;
-            if (run)
+            run = true;
+            input = request;
+            pending = false;
+            if (input.build)
+                build_report.delivery = xor_text("callback received");
+            if (input.join)
             {
-                input = request;
-                pending = false;
-                if (input.build)
-                    build_report.delivery = xor_text("callback received");
-                if (input.join)
-                    faction_report.delivery = xor_text("callback received");
+                notify_join = strcmp(faction_report.delivery, xor_text("callback received")) != 0;
+                faction_report.delivery = xor_text("callback received");
             }
-            ReleaseSRWLockExclusive(&mailbox);
         }
-        // ProcessEvent can pump messages itself. Nested dispatch never runs actions.
+        ReleaseSRWLockExclusive(&mailbox);
+        if (message != wake_message)
+            return CallWindowProcW(previous, window, message, wparam, lparam);
+        // ProcessEvent may pump messages. Repost a nested wake after it returns.
+        if (inside)
+        {
+            nested_wake = true;
+            return 0;
+        }
         if (run)
         {
             inside = true;
+            if (notify_join)
+                log(xor_text("Auto faction: game window callback received"));
             service(input);
-            if (input.cleanup)
-                UnhookWindowsHookEx(input.cleanup);
+            if (input.cleanup && reinterpret_cast<WNDPROC>(GetWindowLongPtrW(window, GWLP_WNDPROC)) == on_message)
+                SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(previous));
             inside = false;
         }
-        return CallNextHookEx(nullptr, code, wparam, lparam);
+        if (nested_wake)
+        {
+            nested_wake = false;
+            PostMessageW(window, wake_message, 0, 0);
+        }
+        return 0;
     }
 
     BOOL CALLBACK find_window(HWND window, LPARAM param)
     {
         DWORD pid = 0;
-        const DWORD thread = GetWindowThreadProcessId(window, &pid);
+        GetWindowThreadProcessId(window, &pid);
         char name[64]{};
         if (pid == GetCurrentProcessId() && IsWindowVisible(window) && GetClassNameA(window, name, sizeof(name)) && strcmp(name, xor_text("UnrealWindow")) == 0)
         {
-            *reinterpret_cast<DWORD*>(param) = thread;
-            message_window = window;
+            *reinterpret_cast<HWND*>(param) = window;
             return FALSE;
         }
         return TRUE;
@@ -594,6 +678,8 @@ game_actions::Status game_actions::faction_status()
 
 void game_actions::update(const Config& settings, bool menu_visible)
 {
+    if (stopped)
+        return;
     if (settings.extra.build_x != was_build)
     {
         was_build = settings.extra.build_x;
@@ -611,19 +697,24 @@ void game_actions::update(const Config& settings, bool menu_visible)
         log(xor_text("Auto faction: update received %s"), was_join ? xor_text("ON") : xor_text("OFF"));
     }
     const bool enabled = settings.extra.build_x || settings.extra.auto_join || settings.extra.anti_afk;
-    if (!hook && enabled && frame_ticks >= next_install)
+    if (!installed && enabled && frame_ticks >= next_install)
     {
         next_install = frame_ticks + 5000;
-        message_thread = 0;
         message_window = nullptr;
-        EnumWindows(find_window, reinterpret_cast<LPARAM>(&message_thread));
-        if (message_thread)
-            hook = SetWindowsHookExA(WH_GETMESSAGE, on_message, nullptr, message_thread);
-        log(hook ? xor_text("game actions ready") : xor_text("game actions unavailable; retrying"));
+        EnumWindows(find_window, reinterpret_cast<LPARAM>(&message_window));
+        if (message_window)
+        {
+            // Publish the previous procedure before any callback can use it.
+            AcquireSRWLockExclusive(&mailbox);
+            previous_proc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(message_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(on_message)));
+            installed = previous_proc != nullptr;
+            ReleaseSRWLockExclusive(&mailbox);
+        }
+        log(installed ? xor_text("game actions: window callback installed") : xor_text("game actions: window callback unavailable; retrying"));
         if (settings.extra.build_x || settings.extra.auto_join)
         {
-            const char* delivery = hook ? xor_text("waiting for callback") : message_thread ? xor_text("hook install failed")
-                                                                                            : xor_text("game window missing");
+            const char* delivery = installed ? xor_text("waiting for callback") : message_window ? xor_text("callback install failed")
+                                                                                                 : xor_text("game window missing");
             AcquireSRWLockExclusive(&mailbox);
             if (settings.extra.build_x)
                 build_report.delivery = delivery;
@@ -634,18 +725,33 @@ void game_actions::update(const Config& settings, bool menu_visible)
     }
     if (!enabled && !was_enabled)
         return;
-    if (!hook || frame_ticks < next_publish)
+    if (!installed || frame_ticks < next_publish)
         return;
     was_enabled = enabled;
     next_publish = frame_ticks + 16;
     const bool aiming = settings.aimbot.enabled && (GetAsyncKeyState(settings.aimbot.key) & 0x8000);
     AcquireSRWLockExclusive(&mailbox);
     const bool wake = !pending;
+    if (wake)
+    {
+        pending_since = frame_ticks;
+        delivery_warned = false;
+    }
+    const bool stalled = !delivery_warned && frame_ticks >= pending_since + 1000;
+    if (stalled)
+    {
+        delivery_warned = true;
+        if (settings.extra.build_x)
+            build_report.delivery = xor_text("callback not delivered");
+        if (settings.extra.auto_join)
+            faction_report.delivery = xor_text("callback not delivered");
+    }
     request = {settings.extra.build_x, settings.extra.auto_join, settings.extra.anti_afk, aiming, menu_visible, frame_ticks};
     pending = true;
     ReleaseSRWLockExclusive(&mailbox);
-    // A window-targeted wake survives a message pump that filters by HWND.
-    if (wake && !PostMessageW(message_window, WM_NULL, 0, 0))
+    if (stalled)
+        log(xor_text("game actions: private wake not dispatched by game window"));
+    if (wake && !PostMessageW(message_window, wake_message, 0, 0))
     {
         AcquireSRWLockExclusive(&mailbox);
         pending = false; // Allow the next publication to retry a failed wake.
@@ -654,20 +760,27 @@ void game_actions::update(const Config& settings, bool menu_visible)
         if (settings.extra.auto_join)
             faction_report.delivery = xor_text("wake post failed");
         ReleaseSRWLockExclusive(&mailbox);
+        if (!post_failed)
+            log(xor_text("game actions: wake post failed"));
+        post_failed = true;
     }
+    else if (wake)
+        post_failed = false;
 }
 
 void game_actions::stop()
 {
-    if (!hook)
+    stopped = true;
+    if (!installed)
         return;
     AcquireSRWLockExclusive(&mailbox);
     request = {};
-    request.cleanup = hook;
-    hook = nullptr;
+    request.cleanup = true;
+    installed = false;
     pending = true;
     ReleaseSRWLockExclusive(&mailbox);
-    PostMessageW(message_window, WM_NULL, 0, 0);
+    if (!PostMessageW(message_window, wake_message, 0, 0))
+        log(xor_text("game actions: cleanup wake post failed"));
     // The DLL is pinned. A delayed cleanup callback remains valid after render stop.
 }
 

@@ -1,22 +1,25 @@
-Application string XOR
+Auto faction selection: SPOT delivery and request alignment
 
-Preserved the user-supplied xor.h byte for byte. Applied xor_text to all 637 runtime string-literal occurrences in src, including narrow/wide engine names, menu text/tooltips, formats, diagnostics, registry/sharing identifiers and pattern strings. The wrapper uses the supplied xorstr object and crypt() method. Includes, comments, sizeof literal lengths and static-assert diagnostics remain compile-time syntax. Runtime-generated player names and formatted output are not compile-time literals; PE import names and compiler/runtime-generated messages are not changed.
+The initial log only established that the updater received the toggle. The later live screenshot explicitly showed callback received and request sent, so callback delivery alone does not explain the reported failure. No live server acceptance or performance result is claimed by these changes.
 
-src/xor_text.h gives each call site a persistent, immutable owner initialized by normal CRT startup before DllMain starts the workers. It shares decode routines between storage types. There are no per-frame decryptions, heap allocations, lazy-init guards, new locks, threads, timers or Windows calls. The raw xor_a macro returns storage belonging to a temporary and cannot safely supply pointers retained after the expression. The persistent owners preserve menu arrays, tooltips, defaults, status mailboxes and cached labels. Status comparisons retain their pointer fast path and compare contents when identical text occupies different storage, avoiding extra status logs. Debug output still uses WD_xetal: with the same displayed text.
+The optional-action transport now follows SPOT's window-procedure/private WM_APP+0x5A7 path. The existing mailbox remains, with ordinary messages forwarded unchanged, native work on the window owner thread, reentry protection and deferred nested wakes. Shutdown restores Build X markers and the original procedure if ours is still at the head of the chain. A newer subclass is preserved. The DLL is pinned, so late callbacks stay valid. No new production thread, frame cap, focus check, recurring window discovery or clock query was added.
 
-Validation: 330 Desktop checks passed after the release rebuild, including narrow/wide persistent lifetime and 10,000 repeated reads on two simultaneous threads, as well as existing gameplay simulation, settings migration/sharing, UI interaction and renderer checks. All eight menu captures and the Magic-distance tooltip capture matched the prior captures byte for byte. The source audit found no unwrapped runtime literals. All 543 distinct source strings of four or more characters were absent as complete plaintext strings outside import metadata. The remaining Head/exit matches are suffixes of InitializeSListHead, _crt_atexit and _cexit imports. Shorter strings are verified at source level because short machine-code sequences can match coincidentally. No live injection, game FPS or runtime-memory secrecy is claimed. XOR obfuscates stored literals and increases DLL size; decoded text remains in process memory while the DLL is loaded.
+Further comparison found that SPOT copies the requested FName from live WDFaction data and calls the player state's virtual ProcessEvent (slot 0x4C). The rewrite had manufactured the tag via Conv_StringToName and used a fixed native ProcessEvent address. Auto faction now follows the live-data and virtual-dispatch path. WDFaction::FactionData is at 0x2C8 and its tag is at 0x30, matching the reference release. Manticore-named assets take priority; the current .Charlie tag is the fallback. Both FName fields are preserved, and the tag is cached per world. The engine GetObjectsOfClass function is resolved once at startup using SPOT's signature/RVA. Discovery examines a bounded class list (maximum 64 actors), releases its engine allocation, and retries at most every two seconds until found. It does not scan the complete object pool or run on the render thread.
 
-The Desktop project changes only add the wrapper header to its file list. Existing output/compiler settings, gameplay logic, thread placement, saved configuration format and the provided xor.h are retained. Existing ignored Desktop compiler-option warnings remain. New verification tool: audit_strings.py.
+Reserve and commit still alternate at least 500 ms apart with the same prediction key, seeded once from the existing clock as in SPOT. The controller's player state is used even when no pawn exists and while the menu is open. Existing live/session/player-state/function guards remain. An unavailable virtual slot prevents dispatch. All other features retain their existing ProcessEvent path. The menu now distinguishes reserve sent/awaiting commit, commit sent/waiting for faction, and replicated Manticore. Local dispatch is not treated as server acceptance. The live tag, callback receipt, first reserve and first commit are logged; retries do not log every request. New strings use xor_text and all logs retain WD_xetal:.
 
-Desktop DLL: 361472 bytes (353.0 KiB), increase 107.0 KiB from the preceding release.
-Imports: 118 (previously 119); no new imports.
-Regression suite: 330 checks passed, 0 failures.
-DLL SHA256: c1a438b6a19b3e98cdf9b54acd5031f5c2015883df6aef9ec234dd036a71a15d
+Validation: clean Desktop Release rebuild and 348 checks passed. Tests cover worker publication to a real disposable UnrealWindow, application-message filtering, forwarding and return values, correct window-thread dispatch, no-pawn faction requests, reserve/commit keys and intervals, replicated faction stopping retries, nested ProcessEvent message pumping, delayed delivery recovery, cleanup/procedure restoration, and no reinstall after stop. New RPC regressions distinguish the virtual entry point from the fixed function, use a live tag different from the mocked text-conversion result, verify cached discovery/freeing, reset on world change, two-second missing-data retries, asset priority with both FName fields, and invalid virtual slots. All game objects and faction lists in these tests are synthetic. No injection or live match test was performed.
+
+The previous WM_NULL/WM_NULL PeekMessage test was an unfiltered zero/zero lookup; the revised callback tests use explicit nonzero message filters. Initial sandbox-only settings failures were resolved by running the isolated test registry suite with permission. A clean release build was used for final size verification because incremental link outputs varied in size. The Desktop project settings and user xor.h were preserved. Runtime imports remain 118; three message-hook APIs are replaced by GetWindowLongPtrW, SetWindowLongPtrW and CallWindowProcW. The engine class query is an internal engine function, not a Windows import. Source audit: 647 wrapped runtime literals and zero unwrapped literals. Binary audit: 553 distinct source strings of at least four characters absent outside import-name metadata.
+
+Final Desktop DLL: 360960 bytes (352.5 KiB).
+Imports: 118. Regression suite: 348 checks passed, 0 failures.
+SHA256: f5de838ff3125bbdc7bfe8a4da832fe6c04b1093f130beb5bcddd2fa37fabf85
 
 DLL: C:\xampp\htdocs\downloads\dll.dll
-Wrapped runtime literal occurrences: 637
+Wrapped runtime literal occurrences: 647
 Compile-only sizeof/static_assert literals: 2
-Unique source strings checked in binary (4+ characters, null-terminated): 543
+Unique source strings checked in binary (4+ characters, null-terminated): 553
 Unwrapped runtime literals: 0
 Plaintext source strings found: 0
 Import-name substring matches (loader metadata):
@@ -39,7 +42,7 @@ PASS: new frame replaces old frame only after publication
 PASS: producer holds the handoff lock
 PASS: busy handoff keeps the render copy without blocking
 PASS: 3000 publications preserve complete player, world and mortar data
-Concurrent snapshot reads: 2859
+Concurrent snapshot reads: 2925
 PASS: stop joins producer and rejects further publication
 PASS: producer receives consistent settings and menu state on another thread
 PASS: completed invalid-world update clears the previous scene
@@ -146,28 +149,46 @@ PASS: Build X forgets a consumed map entry without moving it again, matching SPO
 PASS: leaving the world discards Build X pointers without touching old objects
 PASS: auto faction does not send RPCs in an invalid match context
 PASS: auto join can reserve on deploy screen and respects its retry interval
-PASS: auto faction resolves relative and alternate paths and sends the faction tag and key on the local player state
+PASS: auto faction sends the live Charlie tag rather than a fabricated string-conversion result
+PASS: auto faction distinguishes reserve dispatch from commit dispatch
 PASS: auto join commits the same reservation key on the same player state
+PASS: auto faction exposes completed commit dispatch while awaiting replication
 PASS: auto join stops requesting once already on Manticore
 PASS: auto faction reports success only after the faction value changes
 PASS: disabling the only action cancels its pending faction reservation before re-enabling
 PASS: re-enabled auto faction commits the new reservation
 PASS: replaced player state starts a fresh reservation instead of committing the previous player's key
+PASS: live faction discovery is cached and releases its engine list
+PASS: all faction RPCs use the player state's virtual ProcessEvent
+PASS: a new world discards the previous faction tag and waits for live data
+PASS: missing faction discovery retries no sooner than two seconds
+PASS: live Manticore asset wins over Charlie and preserves both FName fields
+PASS: an unavailable virtual ProcessEvent fails without calling through a null slot
 PASS: anti AFK does not turn immediately when enabled
 PASS: anti AFK acts only after its interval
 PASS: create disposable Unreal window for action callback
 PASS: Build X publication waits for the window message callback
 PASS: menu status exposes an undelivered Build X callback
+PASS: window callback forwards unrelated messages and their return values
+PASS: ordinary window messages do not run queued game actions
 PASS: window-filtered message pump receives the action wake and moves the marker
+PASS: worker publication executes native calls on the window owner thread
 PASS: menu status records real callback delivery and its active result
 PASS: message callback follows a changed hammer aim point
 PASS: opening the menu restores the X but preserves its last active diagnostic
-PASS: callback cleanup restores the X before detaching
+PASS: disabling Build X restores its marker on the game callback
 PASS: auto faction publishes while the menu is open and waits for its game callback
 PASS: window-filtered callback reserves a faction on the deploy screen without a pawn
 PASS: faction callback keeps the 500 ms RPC interval
 PASS: faction callback commits the reserved key
 PASS: faction callback stops requests after the replicated faction becomes Manticore
+PASS: ProcessEvent message pumping cannot run actions recursively
+PASS: a wake consumed by nested dispatch is delivered after the outer callback returns
+PASS: an unpumped faction request gets an explicit delivery diagnostic
+PASS: callback delivery recovers after the window starts pumping again
+PASS: callback cleanup restores the X before detaching
+PASS: shutdown restores the original game window procedure
+PASS: updates after shutdown cannot reinstall or run game actions
 PASS: render camera advances without changing or waiting for entity publication
 PASS: late camera sample never calls native ProcessEvent
 PASS: fixed world geometry follows a rightward camera turn immediately
@@ -219,7 +240,7 @@ PASS: transparent background preserved
 PASS: premultiplied alpha preserved
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 1 submission: 0.256 ms
+Busy-GPU stage 1 submission: 0.248 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -228,7 +249,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 2 submission: 0.136 ms
+Busy-GPU stage 2 submission: 0.112 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -237,7 +258,7 @@ PASS: deferred frames eventually complete
 PASS: queued frames preserve order and final pixels
 PASS: begin busy-GPU regression frame
 PASS: busy GPU queues work without blocking the caller
-Busy-GPU stage 3 submission: 0.127 ms
+Busy-GPU stage 3 submission: 0.143 ms
 PASS: draw, copy or present remains pending without a wait loop
 PASS: second buffer available while first is busy
 PASS: queue second frame while GPU busy
@@ -351,7 +372,7 @@ PASS: present with cached dimensions
 PASS: fixed target content
 PASS: explicit initialization reads dimensions once
 PASS: 120 consecutive frames
-Menu draw/submit: 0.296 ms CPU average, 5.012 ms max; 7.932 ms/frame including test-only waits (no gameplay)
+Menu draw/submit: 0.310 ms CPU average, 5.909 ms max; 9.660 ms/frame including test-only waits (no gameplay)
 PASS: drain a blank frame before stopping
 PASS: stopping clears the previous menu
 PASS: shutdown is repeatable
@@ -365,4 +386,4 @@ PASS: external presentation preserves pixels and alpha
 
 FullName                          Length
 --------                          ------
-C:\xampp\htdocs\downloads\dll.dll 361472
+C:\xampp\htdocs\downloads\dll.dll 360960

@@ -33,6 +33,7 @@ namespace
     };
     Object session, state_type, manager_type, tool_type, decal_type, explosive_type, container_type;
     Object actor_type, scene_type, trace_type, string_type;
+    Object faction_type;
     Object component_fn, eyes_fn, location_fn, trace_fn, reserve_fn, commit_fn, string_fn, library, get_rot_fn, set_rot_fn;
     std::uintptr_t pawn_address, item_address, manager_address, tool_address;
     int moved, traces, reserved, committed, rotated, event_calls;
@@ -42,6 +43,36 @@ namespace
     FVector test_eye{100, 200, 300};
     FRotator test_rotation{};
     float hit_fraction = 0.4f;
+    DWORD event_thread = 0;
+    HWND nested_window = nullptr;
+    Config* nested_settings = nullptr;
+    int nested_events = -1;
+    std::uintptr_t faction_candidates[2]{};
+    int faction_candidate_count = 0, faction_scans = 0, faction_frees = 0, virtual_events = 0;
+
+    void __fastcall faction_objects(void*, TArray<std::uintptr_t>* result, unsigned, unsigned, int)
+    {
+        ++faction_scans;
+        result->Count = result->Max = faction_candidate_count;
+        if (faction_candidate_count)
+        {
+            result->Data = static_cast<std::uintptr_t*>(malloc(sizeof(faction_candidates)));
+            memcpy(result->Data, faction_candidates, sizeof(faction_candidates));
+        }
+    }
+
+    void __fastcall free_factions(std::uintptr_t allocation)
+    {
+        ++faction_frees;
+        free(reinterpret_cast<void*>(allocation));
+    }
+
+    LRESULT CALLBACK action_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+    {
+        if (message == WM_APP + 42)
+            return wparam + lparam;
+        return DefWindowProcW(window, message, wparam, lparam);
+    }
 
     void* __fastcall find_object(void*, void* outer, const FString* name, bool)
     {
@@ -63,6 +94,8 @@ namespace
             out = s == L"/Script/WDGame.WDPlayerStateSession.Server_CommitFactionReservation" ? &commit_fn : nullptr;
         else if (s.find(L"WDPlayerStateSession") != s.npos)
             out = &state_type;
+        else if (s == L"/Script/WDGame.WDFaction")
+            out = &faction_type;
         else if (s.find(L"WDPawnBuildableManager") != s.npos)
             out = &manager_type;
         else if (s.find(L"WDItemExtension_BuildBuildable") != s.npos)
@@ -95,6 +128,7 @@ namespace
     void __fastcall event(void* object, void* function, void* params)
     {
         ++event_calls;
+        event_thread = GetCurrentThreadId();
         const auto obj = reinterpret_cast<std::uintptr_t>(object);
         auto bytes = static_cast<unsigned char*>(params);
         if (function == component_fn.bytes)
@@ -130,6 +164,18 @@ namespace
             memcpy(&reserved_tag, bytes, sizeof(reserved_tag));
             memcpy(&reserve_key, bytes + 8, sizeof(reserve_key));
             reserved_ps = obj;
+            if (nested_window)
+            {
+                const auto window = nested_window;
+                nested_window = nullptr;
+                const int before = event_calls;
+                frame_ticks += 500;
+                game_actions::update(*nested_settings, true);
+                MSG message{};
+                while (PeekMessageA(&message, window, WM_APP, 0xBFFF, PM_REMOVE))
+                    DispatchMessageA(&message);
+                nested_events = event_calls - before;
+            }
         }
         else if (function == commit_fn.bytes)
         {
@@ -144,6 +190,12 @@ namespace
         }
         else if (function == set_rot_fn.bytes)
             ++rotated;
+    }
+
+    void __fastcall virtual_event(void* object, void* function, void* params)
+    {
+        ++virtual_events;
+        event(object, function, params);
     }
 } // namespace
 
@@ -479,12 +531,44 @@ int test_features()
     frame_ticks = old_ticks;
 
     const auto old_base = offsets::base, old_world = offsets::UWorldPtr, old_find = offsets::Functions::StaticFindObject, old_event = offsets::Functions::ProcessEvent;
+    const auto old_names = offsets::GNames, old_objects = offsets::Functions::GetObjectsOfClass, old_free = offsets::Functions::FreeObjectName;
     Object world, state, instance, local, controller, pawn, ps, mesh, inventory, item, manager, tool, decal, faction;
     std::uintptr_t world_pointer = world.addr();
     offsets::base = 1;
     offsets::UWorldPtr = reinterpret_cast<std::uintptr_t>(&world_pointer) - 1;
     offsets::Functions::StaticFindObject = reinterpret_cast<std::uintptr_t>(&find_object) - 1;
     offsets::Functions::ProcessEvent = reinterpret_cast<std::uintptr_t>(&event) - 1;
+    offsets::Functions::GetObjectsOfClass = reinterpret_cast<std::uintptr_t>(&faction_objects) - 1;
+    offsets::Functions::FreeObjectName = reinterpret_cast<std::uintptr_t>(&free_factions) - 1;
+    std::uintptr_t state_vtable[0x4D]{};
+    state_vtable[0x4C] = reinterpret_cast<std::uintptr_t>(&virtual_event);
+    ps.put(offsets::UObject::VTable, reinterpret_cast<std::uintptr_t>(state_vtable));
+    alignas(8) unsigned char names[2048]{};
+    std::uintptr_t name_pool[3]{0, 0, reinterpret_cast<std::uintptr_t>(names)};
+    offsets::GNames = reinterpret_cast<std::uintptr_t>(name_pool) - 1;
+    const auto name_entry = [&](unsigned index, const char* text)
+    {
+        const auto length = strlen(text);
+        const auto header = static_cast<std::uint16_t>(length << 6);
+        memcpy(names + index * 8 + 8, &header, sizeof(header));
+        memcpy(names + index * 8 + 12, text, length);
+    };
+    name_entry(128, "Meta.Alignment.Faction.Charlie");
+    name_entry(144, "Meta.Alignment.Faction.Bravo");
+    name_entry(160, "Meta_Alignment_Faction_Charlie");
+    name_entry(176, "DA_Faction_Manticore");
+    Object faction_actor, faction_data, named_actor, named_data;
+    faction_actor.put(offsets::UObject::ClassPrivate, faction_type.addr());
+    faction_actor.put(0x2C8, faction_data.addr());
+    faction_data.put(0x30, FNameValue{128, 0});
+    faction_data.put(offsets::UObject::NamePrivate, FNameValue{160, 0});
+    named_actor.put(offsets::UObject::ClassPrivate, faction_type.addr());
+    named_actor.put(0x2C8, named_data.addr());
+    named_data.put(0x30, FNameValue{144, 7});
+    named_data.put(offsets::UObject::NamePrivate, FNameValue{176, 0});
+    faction_candidates[0] = faction_actor.addr();
+    faction_candidates[1] = named_actor.addr();
+    faction_candidate_count = 1;
     state.put(offsets::UObject::ClassPrivate, session.addr());
     ps.put(offsets::UObject::ClassPrivate, state_type.addr());
     manager.put(offsets::UObject::ClassPrivate, manager_type.addr());
@@ -571,10 +655,12 @@ int test_features()
     game_actions::test_service(settings, 11001);
     game_actions::test_service(settings, 11200);
     check(reserved == 1 && committed == 0, "auto join can reserve on deploy screen and respects its retry interval");
-    check(reserved_tag.ComparisonIndex == 777 && reserved_tag.Number == 0 && reserve_key > 0 && reserved_ps == ps.addr(), "auto faction resolves relative and alternate paths and sends the faction tag and key on the local player state");
+    check(reserved_tag.ComparisonIndex == 128 && reserved_tag.Number == 0 && reserve_key > 0 && reserved_ps == ps.addr(), "auto faction sends the live Charlie tag rather than a fabricated string-conversion result");
+    check(strcmp(game_actions::faction_status().result, "reserve sent; awaiting commit") == 0, "auto faction distinguishes reserve dispatch from commit dispatch");
     game_actions::test_service(settings, 11502);
     check(committed == 1 && commit_key == reserve_key && committed_ps == reserved_ps, "auto join commits the same reservation key on the same player state");
-    faction.put(offsets::UWDFactionComponent::FactionTag, FNameValue{777, 0});
+    check(strcmp(game_actions::faction_status().result, "commit sent; waiting for faction") == 0, "auto faction exposes completed commit dispatch while awaiting replication");
+    faction.put(offsets::UWDFactionComponent::FactionTag, FNameValue{128, 0});
     game_actions::test_service(settings, 12003);
     check(reserved == 1 && committed == 1, "auto join stops requesting once already on Manticore");
     check(strcmp(game_actions::faction_status().result, "joined Manticore") == 0, "auto faction reports success only after the faction value changes");
@@ -590,25 +676,48 @@ int test_features()
     check(committed == 2 && commit_key == reserve_key, "re-enabled auto faction commits the new reservation");
     game_actions::test_service(settings, 13508);
     Object replacement_ps;
+    replacement_ps.put(offsets::UObject::VTable, reinterpret_cast<std::uintptr_t>(state_vtable));
     replacement_ps.put(offsets::UObject::ClassPrivate, state_type.addr());
     replacement_ps.put(offsets::AWDPlayerStateSession::FactionComponent, faction.addr());
     controller.put(offsets::APlayerController_Extra::ControllerPlayerState, replacement_ps.addr());
     game_actions::test_service(settings, 13509);
     check(reserved == 5 && committed == 2 && reserved_ps == replacement_ps.addr(), "replaced player state starts a fresh reservation instead of committing the previous player's key");
     controller.put(offsets::APlayerController_Extra::ControllerPlayerState, ps.addr());
+    check(faction_scans == 1 && faction_frees == 1, "live faction discovery is cached and releases its engine list");
+    check(virtual_events == reserved + committed, "all faction RPCs use the player state's virtual ProcessEvent");
+    Object next_world;
+    next_world.put(offsets::World::GameState, state.addr());
+    next_world.put(offsets::World::OwningGameInstance, instance.addr());
+    world_pointer = next_world.addr();
+    faction_candidate_count = 0;
+    const int before_missing = reserved;
+    game_actions::test_service(settings, 14000);
+    check(faction_scans == 2 && reserved == before_missing && strcmp(game_actions::faction_status().result, "Manticore tag unavailable") == 0, "a new world discards the previous faction tag and waits for live data");
+    faction_candidate_count = 2;
+    game_actions::test_service(settings, 14500);
+    check(faction_scans == 2 && reserved == before_missing, "missing faction discovery retries no sooner than two seconds");
+    game_actions::test_service(settings, 16000);
+    check(faction_scans == 3 && faction_frees == 2 && reserved == before_missing + 1 && reserved_tag.ComparisonIndex == 144 && reserved_tag.Number == 7, "live Manticore asset wins over Charlie and preserves both FName fields");
+    state_vtable[0x4C] = 0;
+    const int before_invalid_call = virtual_events;
+    game_actions::test_service(settings, 16500);
+    check(virtual_events == before_invalid_call && strcmp(game_actions::faction_status().result, "commit call failed") == 0, "an unavailable virtual ProcessEvent fails without calling through a null slot");
+    state_vtable[0x4C] = reinterpret_cast<std::uintptr_t>(&virtual_event);
+    world_pointer = world.addr();
+    faction_candidate_count = 1;
     settings.extra.auto_join = false;
     settings.extra.anti_afk = true;
     controller.put(offsets::APlayerController_Extra::ControllerPawn, pawn.addr());
-    game_actions::test_service(settings, 16002);
+    game_actions::test_service(settings, 17002);
     check(rotated == 0, "anti AFK does not turn immediately when enabled");
-    game_actions::test_service(settings, 21003);
+    game_actions::test_service(settings, 22003);
     check(rotated == 1, "anti AFK acts only after its interval");
     settings = {};
-    game_actions::test_service(settings, 21004);
+    game_actions::test_service(settings, 22004);
 
     // Exercise the actual Windows callback, not just its service function.
     WNDCLASSW action_class{};
-    action_class.lpfnWndProc = DefWindowProcW;
+    action_class.lpfnWndProc = action_proc;
     action_class.hInstance = GetModuleHandleW(nullptr);
     action_class.lpszClassName = L"UnrealWindow";
     const ATOM action_atom = RegisterClassW(&action_class);
@@ -622,66 +731,122 @@ int test_features()
             for (int i = 0; i < 128 && PeekMessageA(&message, nullptr, 0, 0, PM_REMOVE); ++i)
                 DispatchMessageA(&message);
         };
+        const auto publish = [&](const Config& options, bool menu)
+        {
+            struct Input
+            {
+                const Config& options;
+                bool menu;
+            } input{options, menu};
+            const auto worker = CreateThread(nullptr, 0, [](void* value) -> DWORD
+                                             {
+                const auto& input = *static_cast<Input*>(value);
+                game_actions::update(input.options, input.menu);
+                return 0; }, &input, 0, nullptr);
+            if (!worker || WaitForSingleObject(worker, 5000) != WAIT_OBJECT_0)
+            {
+                printf("FAIL: worker publication stalled\n");
+                ExitProcess(1);
+            }
+            CloseHandle(worker);
+        };
         decal.put(0x230, original);
         settings.extra.build_x = true;
         settings.aimbot.enabled = false;
         frame_ticks = 30000;
         const int before_callback = moved;
-        game_actions::update(settings, false);
+        publish(settings, false);
         check(moved == before_callback, "Build X publication waits for the window message callback");
         check(strcmp(game_actions::build_status().delivery, "waiting for callback") == 0, "menu status exposes an undelivered Build X callback");
         MSG wake{};
-        while (PeekMessageA(&wake, action_window, WM_NULL, WM_NULL, PM_REMOVE))
+        check(SendMessageW(action_window, WM_APP + 42, 17, 25) == 42, "window callback forwards unrelated messages and their return values");
+        PostMessageW(action_window, WM_APP + 42, 0, 0);
+        while (PeekMessageA(&wake, action_window, WM_APP + 42, WM_APP + 42, PM_REMOVE))
+            DispatchMessageA(&wake);
+        check(moved == before_callback, "ordinary window messages do not run queued game actions");
+        while (PeekMessageA(&wake, action_window, WM_APP, 0xBFFF, PM_REMOVE))
             DispatchMessageA(&wake);
         position = read<FVector>(decal.addr() + 0x230);
         check(moved == before_callback + 1 && std::fabs(position.X - 199) < 0.01 && position.Y == 200, "window-filtered message pump receives the action wake and moves the marker");
+        check(event_thread == GetCurrentThreadId(), "worker publication executes native calls on the window owner thread");
         const auto delivered = game_actions::build_status();
         check(strcmp(delivered.delivery, "callback received") == 0 && strcmp(delivered.result, "X follows hammer aim") == 0, "menu status records real callback delivery and its active result");
         test_rotation.Yaw = 90;
         hit_fraction = 0.6f;
         frame_ticks += 16;
-        game_actions::update(settings, false);
+        publish(settings, false);
         pump();
         position = read<FVector>(decal.addr() + 0x230);
         check(std::fabs(position.X - 100) < 0.01 && std::fabs(position.Y - 349) < 0.01, "message callback follows a changed hammer aim point");
         frame_ticks += 16;
-        game_actions::update(settings, true);
+        publish(settings, true);
         pump();
         check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01 && strcmp(game_actions::build_status().result, "X follows hammer aim") == 0, "opening the menu restores the X but preserves its last active diagnostic");
         frame_ticks += 16;
-        game_actions::update(settings, false);
+        publish(settings, false);
         pump();
-        game_actions::stop();
+        settings.extra.build_x = false;
+        frame_ticks += 16;
+        publish(settings, false);
         pump();
-        check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "callback cleanup restores the X before detaching");
+        check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "disabling Build X restores its marker on the game callback");
         settings = {};
         settings.extra.auto_join = true;
         settings.aimbot.enabled = false;
         controller.put(offsets::APlayerController_Extra::ControllerPawn, std::uintptr_t{0});
         frame_ticks = 40000;
         const int before_reserve = reserved, before_commit = committed;
-        game_actions::update(settings, true);
+        publish(settings, true);
         check(reserved == before_reserve && strcmp(game_actions::faction_status().delivery, "waiting for callback") == 0, "auto faction publishes while the menu is open and waits for its game callback");
-        while (PeekMessageA(&wake, action_window, WM_NULL, WM_NULL, PM_REMOVE))
+        while (PeekMessageA(&wake, action_window, WM_APP, 0xBFFF, PM_REMOVE))
             DispatchMessageA(&wake);
         check(reserved == before_reserve + 1 && strcmp(game_actions::faction_status().delivery, "callback received") == 0, "window-filtered callback reserves a faction on the deploy screen without a pawn");
         frame_ticks = 40200;
-        game_actions::update(settings, true);
+        publish(settings, true);
         pump();
         check(reserved == before_reserve + 1 && committed == before_commit, "faction callback keeps the 500 ms RPC interval");
         frame_ticks = 40500;
-        game_actions::update(settings, true);
+        publish(settings, true);
         pump();
         check(committed == before_commit + 1 && commit_key == reserve_key, "faction callback commits the reserved key");
-        faction.put(offsets::UWDFactionComponent::FactionTag, FNameValue{777, 0});
+        faction.put(offsets::UWDFactionComponent::FactionTag, FNameValue{128, 0});
         frame_ticks = 41000;
-        game_actions::update(settings, true);
+        publish(settings, true);
         pump();
         check(reserved == before_reserve + 1 && committed == before_commit + 1 && strcmp(game_actions::faction_status().result, "joined Manticore") == 0, "faction callback stops requests after the replicated faction becomes Manticore");
-        game_actions::stop();
-        while (PeekMessageA(&wake, action_window, WM_NULL, WM_NULL, PM_REMOVE))
+        faction.put(offsets::UWDFactionComponent::FactionTag, FNameValue{});
+        frame_ticks = 41500;
+        nested_window = action_window;
+        nested_settings = &settings;
+        publish(settings, true);
+        const bool got_wake = PeekMessageA(&wake, action_window, WM_APP, 0xBFFF, PM_REMOVE) != 0;
+        if (got_wake)
             DispatchMessageA(&wake);
+        check(got_wake && nested_events == 0 && committed == before_commit + 1, "ProcessEvent message pumping cannot run actions recursively");
+        pump();
+        check(committed == before_commit + 2 && commit_key == reserve_key, "a wake consumed by nested dispatch is delivered after the outer callback returns");
+        frame_ticks = 42500;
+        publish(settings, true);
+        frame_ticks = 43500;
+        publish(settings, true);
+        check(strcmp(game_actions::faction_status().delivery, "callback not delivered") == 0, "an unpumped faction request gets an explicit delivery diagnostic");
+        pump();
+        check(strcmp(game_actions::faction_status().delivery, "callback received") == 0, "callback delivery recovers after the window starts pumping again");
         controller.put(offsets::APlayerController_Extra::ControllerPawn, pawn.addr());
+        settings.extra.build_x = true;
+        frame_ticks += 16;
+        publish(settings, false);
+        pump();
+        game_actions::stop();
+        while (PeekMessageA(&wake, action_window, WM_APP, 0xBFFF, PM_REMOVE))
+            DispatchMessageA(&wake);
+        check(read<FVector>(decal.addr() + 0x230).Distance(original) < 0.01, "callback cleanup restores the X before detaching");
+        check(reinterpret_cast<WNDPROC>(GetWindowLongPtrW(action_window, GWLP_WNDPROC)) == action_proc && SendMessageW(action_window, WM_APP + 42, 20, 22) == 42, "shutdown restores the original game window procedure");
+        const int after_stop = event_calls;
+        frame_ticks += 5000;
+        publish(settings, false);
+        pump();
+        check(event_calls == after_stop && reinterpret_cast<WNDPROC>(GetWindowLongPtrW(action_window, GWLP_WNDPROC)) == action_proc, "updates after shutdown cannot reinstall or run game actions");
         DestroyWindow(action_window);
     }
     if (action_atom)
@@ -754,6 +919,9 @@ int test_features()
     offsets::UWorldPtr = old_world;
     offsets::Functions::StaticFindObject = old_find;
     offsets::Functions::ProcessEvent = old_event;
+    offsets::GNames = old_names;
+    offsets::Functions::GetObjectsOfClass = old_objects;
+    offsets::Functions::FreeObjectName = old_free;
     return failures;
 }
 

@@ -595,6 +595,7 @@ namespace offsets
     {
         extern std::uintptr_t ProcessEvent;
         extern std::uintptr_t StaticFindObject;
+        extern std::uintptr_t GetObjectsOfClass;
         inline constexpr std::uintptr_t FNameToString = 0x1687780;
         extern std::uintptr_t FreeObjectName;
     } // namespace Functions
